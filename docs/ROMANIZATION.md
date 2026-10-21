@@ -33,16 +33,29 @@ Only eight end sounds exist:
 - **o/w** — for ว
 
 ## Vowels
-- **Long vowels are doubled**: aa (า), ee (ี), oo (ู), uue (ือ)
-- **Short vowels**: a (ะ), i (ิ), u (ุ), ue (ึ)
-- Other long vowels:
-  - eh (เ)
-  - ae (แ)
-  - oh (โ)
-  - or (ออ)
-  - er (เออ)
-  - uea (เอือ)
-- ai (ไ / ใ), ao (เา), am (ำ)
+Long vowels are written with a doubled letter where possible. Short and long partners may share a spelling; lessons always say which one is long or short.
+
+| Short | Long | Romanization |
+|---|---|---|
+| อะ | อา | a · aa |
+| อิ | อี | i · ee |
+| อึ | อือ | ue · uue |
+| อุ | อู | u · oo |
+| เอะ | เอ | e · eh |
+| แอะ | แอ | ae · ae |
+| โอะ | โอ | o · oh |
+| เอาะ | ออ | or · or |
+| เออะ | เออ | er · er |
+| — | เอีย | ia |
+| — | เอือ | uea |
+| — | อัว | ua |
+| ไอ · ใอ | | ai |
+| เอา | | ao |
+| อำ | | am |
+| ฤ | | rue / ri |
+
+## English-letter helpers
+Each consonant also has an English helper letter (K → ก, T → ต/ท, L → ล …). These are memory aids for beginners, not romanization rules and not exact sounds.
 
 ## Letter names
 A letter is named with its sound plus "or", followed by its name word. For example:

@@ -457,3 +457,40 @@ table.rules td.th{font-size:18px;white-space:nowrap}
 .scorebig span{font-size:13px;font-weight:700;color:var(--ink2)}
 .scorebig.pass{background:var(--mint-l)} .scorebig.fail{background:var(--peach-l)}
 .statusline{font-weight:900;font-size:18px} .statusline.ok{color:var(--ok)} .statusline.warn{color:var(--warn)}
+
+/* =========================================================
+   v0.5 — accounts, onboarding, dashboard skills, tests
+   ========================================================= */
+.bar{height:10px;border-radius:99px;background:#EEE8F5;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--lav-d);transition:width .35s}
+.bar.ok i{background:var(--mint-d)} .bar.warn i{background:var(--peach-d)}
+.view.narrow{max-width:640px}
+body.gate .tabbar{display:none}
+body.gate .main{padding-bottom:40px}
+@media (min-width:900px){body.gate .app{grid-template-columns:1fr}body.gate .side{display:none}}
+.gatehead{display:flex;align-items:center;gap:16px;padding-top:12px}
+.gatehead h1 .brand{color:#8E6CF5}
+.okmsg{color:var(--ok);font-size:13.5px;font-weight:800}
+.journey{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.journey li{display:flex;gap:12px;align-items:center}
+.jn{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex:none;font-weight:900;background:var(--bg);box-shadow:0 0 0 2px var(--hair) inset}
+.jn.now{background:var(--lav);box-shadow:none}
+.statrow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+@media (max-width:560px){.statrow{grid-template-columns:repeat(3,1fr)}}
+.mini{display:flex;flex-direction:column;align-items:center;text-align:center;background:var(--bg);border-radius:16px;padding:8px 4px}
+.mini b{font-family:var(--font-display);font-size:24px;line-height:1.1}
+.mini span{font-size:11.5px;font-weight:700;color:var(--ink2)}
+.skills{display:flex;flex-direction:column;gap:10px}
+.skillrow{display:flex;flex-direction:column;gap:5px;font-size:14px}
+.skillcard{display:flex;flex-direction:column;gap:10px}
+.recbox{border-radius:16px;padding:12px 14px}
+.lesson-row.passed .st{background:var(--mint)}
+.lesson-row.needs_review .st{background:var(--peach)}
+.lesson-row.viewed .st,.lesson-row.practiced .st{background:var(--sc,var(--lav))}
+.testbanner{display:flex;gap:12px;align-items:center;background:var(--lemon-l);border-radius:18px;padding:12px 14px}
+.testbanner svg{width:26px;height:26px;flex:none}
+.enghelp{display:flex;gap:12px;align-items:center;background:var(--sky-l);border-radius:16px;padding:10px 12px}
+.engletter{min-width:52px;height:52px;padding:0 8px;border-radius:14px;background:#fff;display:grid;place-items:center;font-family:var(--font-display);font-size:24px;font-weight:700;box-shadow:0 3px 0 var(--sky-d);flex:none}
+.ltile{position:relative}
+.engtag{position:absolute;top:4px;left:6px;font-size:10.5px;font-weight:900;color:var(--ink2)}
+.topbar .small-btn{white-space:nowrap;min-height:38px;padding:6px 14px}

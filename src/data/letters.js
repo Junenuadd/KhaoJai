@@ -119,22 +119,93 @@ export const SAME_SOUND = [
   { snd: 'dt', letters: ['ฏ', 'ต'], why: 'ฏ is rare (e.g. ปฏิบัติ practise).' }
 ];
 
-// Vowels taught in Stage 3. "อ" stands in for any consonant to show where the vowel sits.
+// English-letter helpers (Phase 1). A familiar English letter is a MEMORY AID, not an exact sound.
+// eng = the helper letter; tip = what to watch out for (shown on the letter card).
+const ENG = {
+  'ก': ['K', 'Start by linking ก with K. The real Thai sound is softer — between g and k, with no puff of air.'],
+  'ข': ['K', 'Also a K letter, but this one is a strong k with a puff of air, like "kite".'],
+  'ฃ': ['K', 'An old K letter that is no longer used.'],
+  'ค': ['K', 'The most common strong-k letter (puff of air), as in ควาย.'],
+  'ฅ': ['K', 'An old K letter that is no longer used.'],
+  'ฆ': ['K', 'A rare K letter, mostly in borrowed words.'],
+  'ง': ['NG', 'Like "ng" at the end of "sing" — Thai also puts it at the START of words.'],
+  'จ': ['J', 'J is a good start. Thai จ is a little softer than English j.'],
+  'ฉ': ['CH', 'CH as in "chair".'],
+  'ช': ['CH', 'The everyday CH letter, as in ช้าง (elephant).'],
+  'ซ': ['S', 'An S letter. ส is the more common one.'],
+  'ฌ': ['CH', 'A rare CH letter.'],
+  'ญ': ['Y', 'Y at the start of a syllable, but N at the end.'],
+  'ฎ': ['D', 'A rare D letter.'],
+  'ฏ': ['T', 'A rare T letter, said like ต (no puff of air).'],
+  'ฐ': ['T', 'A rare T letter, said with a puff of air.'],
+  'ฑ': ['T', 'A rare T letter. In a few words it sounds like d.'],
+  'ฒ': ['T', 'A rare T letter.'],
+  'ณ': ['N', 'An N letter from Pali/Sanskrit words, as in คุณ.'],
+  'ด': ['D', 'The everyday D letter.'],
+  'ต': ['T', 'Think T — but ต has no puff of air (between d and t). ท is the other common T.'],
+  'ถ': ['T', 'A T letter with a puff of air.'],
+  'ท': ['T', 'The most common strong-T letter (puff of air). Compare it with ต.'],
+  'ธ': ['T', 'A T letter with a puff of air, as in ธง (flag).'],
+  'น': ['N', 'The everyday N letter.'],
+  'บ': ['B', 'The B letter.'],
+  'ป': ['P', 'Think P — but ป has no puff of air, like the p in "spin". Learners often write it "bp".'],
+  'ผ': ['P', 'A P letter with a puff of air.'],
+  'ฝ': ['F', 'An F letter.'],
+  'พ': ['P', 'The most common strong-P letter (puff of air).'],
+  'ฟ': ['F', 'The everyday F letter.'],
+  'ภ': ['P', 'A P letter used in Pali/Sanskrit words, as in ภาษา (language).'],
+  'ม': ['M', 'The M letter.'],
+  'ย': ['Y', 'The everyday Y letter.'],
+  'ร': ['R', 'R — a light tap of the tongue. Don\'t mix it up with ล (L).'],
+  'ล': ['L', 'The everyday L letter. Its partner to learn separately is ร (R).'],
+  'ว': ['W', 'The W letter.'],
+  'ศ': ['S', 'An S letter from Sanskrit words, as in ศาลา. Same sound as ส.'],
+  'ษ': ['S', 'An S letter from Sanskrit words. Same sound as ส.'],
+  'ส': ['S', 'The everyday S letter, as in เสือ (tiger). ศ and ษ make the same sound.'],
+  'ห': ['H', 'The everyday H letter. It also helps other letters, which you will learn later.'],
+  'ฬ': ['L', 'A rare L letter, as in จุฬา.'],
+  'อ': ['—', 'No English letter: อ is a silent holder for a vowel at the start of a word. It is also part of some vowels.'],
+  'ฮ': ['H', 'A less common H letter.']
+};
+[...LETTERS, ...Object.values(L)].forEach(x => { x.eng = ENG[x.c][0]; x.tip = ENG[x.c][1]; });
+
+// Thai vowels. "อ" stands in for any consonant to show where the vowel sits.
+// len: long/short · pos: where it is written · rom: KhaoJai romanization (approximate).
+// Short and long partners may share a romanization; the length label tells them apart.
 export const VOWELS = [
-  { v: 'อา', rom: 'aa', len: 'long', pos: 'after' },
-  { v: 'อี', rom: 'ee', len: 'long', pos: 'above' },
-  { v: 'อู', rom: 'oo', len: 'long', pos: 'below' },
-  { v: 'เอ', rom: 'eh', len: 'long', pos: 'before' },
-  { v: 'แอ', rom: 'ae', len: 'long', pos: 'before' },
-  { v: 'โอ', rom: 'oh', len: 'long', pos: 'before' },
-  { v: 'ออ', rom: 'or', len: 'long', pos: 'after' },
-  { v: 'อะ', rom: 'a', len: 'short', pos: 'after' },
-  { v: 'อิ', rom: 'i', len: 'short', pos: 'above' },
-  { v: 'อุ', rom: 'u', len: 'short', pos: 'below' },
-  { v: 'ไอ', rom: 'ai', len: 'short', pos: 'before', note: 'ไ (mai malai) — used in most "ai" words' },
-  { v: 'ใอ', rom: 'ai', len: 'short', pos: 'before', note: 'ใ (mai muan) — only about 20 words, e.g. ใจ, ใช่, ใหม่' },
-  { v: 'เอา', rom: 'ao', len: 'short', pos: 'around' },
-  { v: 'อำ', rom: 'am', len: 'short', pos: 'after' }
+  // V1 — long vowels written after, above or below
+  { v: 'อา', rom: 'aa', len: 'long', pos: 'after', set: 1, eg: ['กา', 'gaa', 'crow'] },
+  { v: 'อี', rom: 'ee', len: 'long', pos: 'above', set: 1, eg: ['ดี', 'dee', 'good'] },
+  { v: 'อู', rom: 'oo', len: 'long', pos: 'below', set: 1, eg: ['งู', 'ngoo', 'snake'] },
+  { v: 'ออ', rom: 'or', len: 'long', pos: 'after', set: 1, eg: ['ขอ', 'kor', 'to ask for'], note: 'This vowel is written with the letter อ itself.' },
+  // V2 — short partners
+  { v: 'อะ', rom: 'a', len: 'short', pos: 'after', set: 2, pair: 'อา', eg: ['จะ', 'ja', 'will'] },
+  { v: 'อิ', rom: 'i', len: 'short', pos: 'above', set: 2, pair: 'อี', eg: ['ติ', 'dti', 'to criticise'] },
+  { v: 'อุ', rom: 'u', len: 'short', pos: 'below', set: 2, pair: 'อู', eg: ['ดุ', 'du', 'fierce'] },
+  // V3 — written BEFORE the consonant
+  { v: 'เอ', rom: 'eh', len: 'long', pos: 'before', set: 3, eg: ['เท', 'teh', 'to pour'] },
+  { v: 'แอ', rom: 'ae', len: 'long', pos: 'before', set: 3, eg: ['แม่', 'mae', 'mother'] },
+  { v: 'โอ', rom: 'oh', len: 'long', pos: 'before', set: 3, eg: ['โต', 'dtoh', 'big'] },
+  { v: 'เอะ', rom: 'e', len: 'short', pos: 'around', set: 3, pair: 'เอ', eg: ['เตะ', 'dte', 'to kick'] },
+  { v: 'แอะ', rom: 'ae', len: 'short', pos: 'around', set: 3, pair: 'แอ', eg: ['แพะ', 'pae', 'goat'] },
+  { v: 'โอะ', rom: 'o', len: 'short', pos: 'around', set: 3, pair: 'โอ', eg: ['โต๊ะ', 'dto', 'table'] },
+  // V4 — ue / er / short or
+  { v: 'อึ', rom: 'ue', len: 'short', pos: 'above', set: 4, eg: ['ผึ้ง', 'pueng', 'bee'], note: 'Say "ee" while keeping your lips flat and relaxed.' },
+  { v: 'อือ', rom: 'uue', len: 'long', pos: 'above', set: 4, pair: 'อึ', eg: ['มือ', 'muue', 'hand'], note: 'With no final consonant this vowel is written with an extra อ.' },
+  { v: 'เออ', rom: 'er', len: 'long', pos: 'around', set: 4, eg: ['เธอ', 'ter', 'you / she'], note: 'Like "er" in "her", without the r.' },
+  { v: 'เออะ', rom: 'er', len: 'short', pos: 'around', set: 4, pair: 'เออ', eg: ['เลอะ', 'ler', 'messy'] },
+  { v: 'เอาะ', rom: 'or', len: 'short', pos: 'around', set: 4, pair: 'ออ', eg: ['เกาะ', 'gor', 'island'] },
+  // V5 — vowels made of several parts (diphthongs)
+  { v: 'เอีย', rom: 'ia', len: 'long', pos: 'around', set: 5, eg: ['เมีย', 'mia', 'wife (informal)'], note: 'Three parts: เ before, ี above and ย after.' },
+  { v: 'เอือ', rom: 'uea', len: 'long', pos: 'around', set: 5, eg: ['เสือ', 'suea', 'tiger'], note: 'Three parts: เ before, ื above and อ after.' },
+  { v: 'อัว', rom: 'ua', len: 'long', pos: 'around', set: 5, eg: ['ตัว', 'dtua', 'body / animal'], note: 'Two parts: ั above and ว after.' },
+  // V6 — special vowels
+  { v: 'ไอ', rom: 'ai', len: 'short', pos: 'before', set: 6, eg: ['ไป', 'bpai', 'to go'], note: 'ไ (mai malai) is used in most "ai" words.' },
+  { v: 'ใอ', rom: 'ai', len: 'short', pos: 'before', set: 6, eg: ['ใจ', 'jai', 'heart'], note: 'ใ (mai muan) is used in only about 20 words, such as ใจ, ใช่, ใหม่.' },
+  { v: 'เอา', rom: 'ao', len: 'short', pos: 'around', set: 6, eg: ['เรา', 'rao', 'we'] },
+  { v: 'อำ', rom: 'am', len: 'short', pos: 'after', set: 6, eg: ['ทำ', 'tam', 'to do'] },
+  { v: 'ฤ', rom: 'rue / ri', len: 'short', pos: 'alone', set: 6, eg: ['ฤดู', 'rue-doo', 'season'], note: 'A rare vowel-letter from Sanskrit words. It can be read "rue" or "ri".' }
 ];
+export const vowelSet = n => VOWELS.filter(v => v.set === n);
 
 export const TONES = ['Mid', 'Low', 'Falling', 'High', 'Rising'];

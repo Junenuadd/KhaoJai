@@ -1,66 +1,86 @@
-// KhaoJai — app shell, routing and screens. Guest mode: no sign-up, progress stays on this device.
-// The Learn tab is ONE ordered path: Stage 1 letters → 2 sounds → 3 reading → 4 writing → 5 foundation check.
-import { S, save, resetAll, todayPoints, DAILY_GOAL, lessonState, recordResult, markStarted, dueLetters, troubleLetters, knownLetters } from './store.js';
-import { STAGES, ALL_LESSONS, LESSON, passMark, reviewDrill } from './data/curriculum.js';
-import { LETTERS, L, SOUNDS, CLASS_INFO, SAME_SOUND } from './data/letters.js';
-import { LINES, ORDER as LIFE_ORDER, STATIONS, TIME_DRILL, WORDS } from './data/beyond.js';
+// KhaoJai — app shell, routing and screens.
+// Journey: Sign in / guest → How KhaoJai teaches → a few questions (+ optional placement) → Dashboard → lessons.
+import { S, save, resetAll, todayPoints, dailyGoal, lessonState, isPassed, markPlaced, dueLetters, troubleLetters, knownLetters, skillSummary, seeLetter } from './store.js';
+import { PHASES, WRITING, ALL_LESSONS, LESSON, SKILLS, PHASE1_SKILLS, passMark, phaseOf, placementSteps, REVIEW_COVERS, remedialSteps, skillDrill, reviewDrill } from './data/curriculum.js';
+import { LETTERS, L, SOUNDS, CLASS_INFO, SAME_SOUND, VOWELS } from './data/letters.js';
+import { LINES, STATIONS, TIME_DRILL } from './data/beyond.js';
 import { DICT, DECODE_EXAMPLES, decode } from './data/decoder.js';
 import { ic, jai, esc, toast, say } from './ui.js';
 import { P, startLesson, renderPlayer, playerAction, playerKey, mountPlayer } from './player.js';
 import { PLANS, checkoutSheet, wireCheckout, stopQr } from './checkout.js';
-import { mountPad, shapeScore } from './draw.js';
-import { PASS } from './config.js';
+import { mountPad, shapeScore, recognize } from './draw.js';
+import { PASS, LEVEL } from './config.js';
+import * as Auth from './auth.js';
 
-const ROUTES = ['map', 'letters', 'practice', 'decoder', 'me', 'homework', 'plans', 'play'];
+const ROUTES = ['auth', 'notice', 'onboard', 'map', 'letters', 'practice', 'decoder', 'me', 'homework', 'plans', 'play'];
+const GATE = ['auth', 'notice', 'onboard'];
 const NAV = [['map', 'Learn', 'map'], ['letters', 'ก–ฮ', 'abc'], ['practice', 'Practice', 'practice'], ['decoder', 'Decoder', 'decoder'], ['me', 'Me', 'me']];
 let route = 'map', billing = 'monthly', dText = DECODE_EXAMPLES[0];
-let openStage = null, lettersTab = 'chart', studio = { c: 'ก', guide: true, strokes: [], score: null };
-let fc = { i: 0, flip: false };
+let openPhase = null, lettersTab = 'chart', studio = { c: 'ก', guide: true, strokes: [], score: null };
+let fc = { deck: [], i: 0, flip: false };
+let auth = { mode: 'signin', busy: false, err: '', msg: '' };
+let onb = null;
+const isLetter = c => !!L[c];
 
-/* ---------- progress logic ---------- */
-const stageDone = st => st.lessons.every(l => lessonState(l.id) === 'completed');
-const stageOpen = st => S.unlockAll || st.n === 1 || stageDone(STAGES[st.n - 2]);
-const foundationPassed = () => stageDone(STAGES[4]);
-function lessonOpen(st, idx) {
-  const l = st.lessons[idx];
-  if (S.unlockAll || lessonState(l.id) !== 'not_started') return true;
-  if (!stageOpen(st)) return false;
-  if (st.n === 5) return true; // the four tests can be taken in any order once Stage 5 is open
-  return idx === 0 || lessonState(st.lessons[idx - 1].id) === 'completed';
+/* ---------- unlocking ---------- */
+const lessonsOf = ph => ph.lessons;
+const phasePassed = n => { const ph = PHASES[n - 1]; return ph.lessons.length > 0 && ph.lessons.every(l => isPassed(l.id)); };
+const phaseOpen = ph => S.unlockAll || ph.n === 1 || (ph.n === 2 && phasePassed(1)) || (ph.life && phasePassed(2));
+function lessonOpen(id) {
+  const l = LESSON[id];
+  if (S.unlockAll || lessonState(id) !== 'not_started') return true;
+  if (l.phase === 'W') return l.idx === 0 ? isPassed('C2') : isPassed(WRITING.lessons[l.idx - 1].id);
+  const ph = PHASES[l.phase - 1];
+  if (!phaseOpen(ph)) return false;
+  if (l.check) return ph.lessons.filter(x => !x.check).every(x => isPassed(x.id)); // phase checks: any order
+  return l.idx === 0 || isPassed(ph.lessons[l.idx - 1].id);
 }
-function lockReason(st, idx) {
-  if (!stageOpen(st)) return `Pass Stage ${st.n - 1} (${STAGES[st.n - 2].title}) to unlock`;
-  return `Complete "${st.lessons[idx - 1].title}" first`;
+function lockReason(id) {
+  const l = LESSON[id];
+  if (l.phase === 'W') return l.idx === 0 ? 'Pass "Consonants ง–ฌ" (C2) first' : `Pass "${WRITING.lessons[l.idx - 1].title}" first`;
+  const ph = PHASES[l.phase - 1];
+  if (!phaseOpen(ph)) return `Pass Phase ${ph.n - 1} to unlock`;
+  if (l.check) return 'Pass every lesson in this phase to unlock the phase checks';
+  return `Pass "${ph.lessons[l.idx - 1].title}" first`;
 }
 function nextLesson() {
-  for (const st of STAGES) for (let i = 0; i < st.lessons.length; i++) {
-    if (lessonState(st.lessons[i].id) !== 'completed' && lessonOpen(st, i)) return { st, l: st.lessons[i], i };
-  }
+  for (const ph of PHASES) for (const l of ph.lessons) if (!isPassed(l.id) && lessonOpen(l.id)) return l;
   return null;
 }
-const currentStage = () => STAGES.find(st => !stageDone(st)) || STAGES[4];
-const after = id => { const i = ALL_LESSONS.findIndex(l => l.id === id); return ALL_LESSONS[i + 1]; };
+const currentPhase = () => PHASES.find(ph => ph.lessons.length && !phasePassed(ph.n)) || PHASES[1];
+const nextAfter = id => { const l = LESSON[id]; const list = l.phase === 'W' ? WRITING.lessons : PHASES[l.phase - 1].lessons; return list[l.idx + 1] || (l.phase === 1 && phasePassed(1) ? PHASES[1].lessons[0] : null); };
 
-const STATUS = {
-  not_started: ['Not started', ''], in_progress: ['In progress', 'info'], needs_practice: ['Needs more practice', 'warn'], completed: ['Completed', 'ok']
-};
-const statusPill = (id, test) => { const s = lessonState(id); const best = S.lessons[id]?.best; const [t, c] = STATUS[s]; return `<span class="pill ${c}">${s === 'completed' && test ? 'Passed' : t}${best && s !== 'not_started' ? ` · ${best}%` : ''}</span>`; };
+const STATUS = { not_started: ['Not started', ''], viewed: ['Viewed', 'info'], practiced: ['Practice done', 'info'], needs_review: ['Needs review', 'warn'], passed: ['Passed', 'ok'] };
+const statusPill = id => { const s = lessonState(id), r = S.lessons[id]; const [t, c] = STATUS[s]; return `<span class="pill ${c}">${t}${r?.via === 'placement' ? ' · placement' : r?.testBest && s !== 'not_started' ? ` · ${r.testBest}%` : ''}</span>`; };
+const level = pct => pct === null || pct === undefined ? ['Not tested yet', ''] : pct >= LEVEL.strong ? ['Strong', 'ok'] : pct >= LEVEL.developing ? ['Developing', 'info'] : ['Needs review', 'warn'];
+const bar = (pct, cls = '') => `<div class="bar ${cls}"><i style="width:${Math.max(pct ? 2 : 0, pct || 0)}%"></i></div>`;
 
 /* ---------- routing ---------- */
+function gateRoute(r) {
+  if (!S.entered) return 'auth';
+  if (!S.noticeSeen && r !== 'auth') return 'notice';
+  if (!S.profile && !['auth', 'notice'].includes(r)) return 'onboard';
+  return r;
+}
 function go(r, sub) {
   if (!ROUTES.includes(r) || (r === 'play' && !P)) r = 'map';
+  if (r !== 'play') r = gateRoute(r);
   route = r; if (sub) lettersTab = sub;
   if (r !== 'play') { try { history.replaceState(null, '', '#' + r); } catch (e) {} }
   render(); window.scrollTo(0, 0);
 }
-window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (ROUTES.includes(h) && h !== route && h !== 'play') { closeSheet(); stopSing(); route = h; render(); } });
+window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (ROUTES.includes(h) && h !== route && h !== 'play') { closeSheet(); stopSing(); route = gateRoute(h); render(); } });
 
 function nav() {
+  const gate = GATE.includes(route);
+  document.body.classList.toggle('gate', gate);
   const cur = ['homework', 'plans'].includes(route) ? 'me' : route;
-  document.getElementById('sidenav').innerHTML = NAV.map(([r, l, i]) => `<button class="sidelink" data-go="${r}" ${cur === r ? 'aria-current="page"' : ''}>${icon(i)}<span>${r === 'letters' ? 'Letters ก–ฮ' : l}</span></button>`).join('')
+  document.getElementById('sidenav').innerHTML = gate ? '' : NAV.map(([r, l, i]) => `<button class="sidelink" data-go="${r}" ${cur === r ? 'aria-current="page"' : ''}>${icon(i)}<span>${r === 'letters' ? 'Letters ก–ฮ' : l}</span></button>`).join('')
     + `<button class="sidelink" data-go="homework" ${route === 'homework' ? 'aria-current="page"' : ''}>${ic('homework')}<span>Homework</span></button>`
     + `<button class="sidelink" data-go="plans" ${route === 'plans' ? 'aria-current="page"' : ''}>${ic('star')}<span>Plus</span></button>`;
-  document.getElementById('tabbar').innerHTML = NAV.map(([r, l, i]) => `<button class="tab" data-go="${r}" ${cur === r ? 'aria-current="page"' : ''}>${icon(i)}<span>${l}</span></button>`).join('');
+  document.getElementById('tabbar').innerHTML = gate ? '' : NAV.map(([r, l, i]) => `<button class="tab" data-go="${r}" ${cur === r ? 'aria-current="page"' : ''}>${icon(i)}<span>${l}</span></button>`).join('');
+  const foot = document.querySelector('.side-foot');
+  if (foot) foot.innerHTML = gate ? '' : Auth.signedIn() ? `Signed in as<br><b>${esc(Auth.user()?.email || '')}</b><br><button class="linkbtn" id="mOut">Sign out</button>` : `Guest · progress on this device${Auth.configured() ? '<br><button class="linkbtn" id="mSignIn">Sign in or create an account</button>' : ''}`;
 }
 const icon = n => n === 'abc' ? '<span class="abc" aria-hidden="true">กข</span>' : ic(n);
 
@@ -69,106 +89,251 @@ function topbar() {
     <a class="logo" href="#map" data-go="map">${jai(36)}<span>Khao<b>Jai</b></span></a>
     <div class="row nowrap">
       <span class="chip sun" title="Days in a row">${ic('sun')} ${S.streak}</span>
-      <span class="chip lav" title="Letters you know well">${icon('abc')} ${knownLetters()}/44</span>
+      <span class="chip lav" title="Letters you know well">${icon('abc')} ${knownLetters(isLetter)}/44</span>
+      ${Auth.signedIn() ? `<button class="chip" data-go="me" title="${esc(Auth.user()?.email || 'Account')}">${ic('me')}<span class="hide-xs">Account</span></button>` : Auth.configured() ? `<button class="btn small-btn" id="mSignIn">Sign in</button>` : ''}
     </div></header>`;
 }
 
-/* ---------- Learn: the path ---------- */
+/* ---------- 1. Sign in / sign up ---------- */
+function vAuth() {
+  const on = Auth.configured();
+  const head = `<div class="gatehead">${jai(84, 'happy', '#C9B6FF', 'bob')}<div><h1>Welcome to Khao<b class="brand">Jai</b></h1><p class="muted">Learn to read Thai — from your very first letter.</p></div></div>`;
+  if (!on) return `${head}
+    <section class="card stack c-lemon-l"><h2>Accounts are not switched on yet</h2>
+      <p>Sign-up and sign-in will open soon. Until then you can learn as a guest: your progress is saved <b>on this device only</b> and is not linked to an account.</p>
+      <button class="btn big block" id="aGuest">Start as a guest</button></section>`;
+  if (auth.mode === 'newpass') return `${head}<form class="card stack" id="aNewPass" novalidate><h2>Choose a new password</h2>
+      <div class="field"><label for="aPw">New password</label><input id="aPw" class="input" type="password" autocomplete="new-password" minlength="8" required></div>
+      ${authMsgs()}<button class="btn big block" type="submit" ${auth.busy ? 'disabled' : ''}>${auth.busy ? 'Saving…' : 'Save new password'}</button></form>`;
+  if (auth.mode === 'reset') return `${head}<form class="card stack" id="aReset" novalidate><h2>Reset your password</h2><p class="small muted">We'll email you a link to choose a new password.</p>
+      <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" required></div>
+      ${authMsgs()}<button class="btn big block" type="submit" ${auth.busy ? 'disabled' : ''}>${auth.busy ? 'Sending…' : 'Send reset link'}</button>
+      <button class="linkbtn" type="button" data-amode="signin">Back to sign in</button></form>`;
+  const up = auth.mode === 'signup';
+  return `${head}
+    <div class="seg wide" role="tablist"><button role="tab" data-amode="signin" aria-pressed="${!up}">Sign in</button><button role="tab" data-amode="signup" aria-pressed="${up}">Create account</button></div>
+    <form class="card stack" id="aForm" novalidate>
+      ${Auth.providers.google ? `<button class="btn line block" type="button" id="aGoogle">${googleG()} Continue with Google</button><p class="small muted center">or with email</p>` : ''}
+      <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" required></div>
+      <div class="field"><label for="aPw">Password${up ? ' (at least 8 characters)' : ''}</label><input id="aPw" class="input" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" minlength="${up ? 8 : 1}" required></div>
+      ${authMsgs()}
+      <button class="btn big block" type="submit" ${auth.busy ? 'disabled' : ''}>${auth.busy ? (up ? 'Creating account…' : 'Signing in…') : (up ? 'Create account' : 'Sign in')}</button>
+      ${up ? '' : '<button class="linkbtn" type="button" data-amode="reset">Forgot your password?</button>'}
+    </form>
+    <section class="card stack c-lav-l"><p><b>Just want to try it?</b> Learn as a guest — progress stays on this device. You can create an account later and keep it.</p><button class="btn line" id="aGuest">Continue as a guest</button></section>`;
+}
+const authMsgs = () => `${auth.err ? `<p class="err" role="alert">${esc(auth.err)}</p>` : ''}${auth.msg ? `<p class="okmsg" role="status">${esc(auth.msg)}</p>` : ''}`;
+const googleG = () => '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
+async function authSubmit(kind) {
+  const email = document.getElementById('aEmail')?.value.trim(), pw = document.getElementById('aPw')?.value || '';
+  auth.err = ''; auth.msg = '';
+  if (kind !== 'newpass' && !/^\S+@\S+\.\S+$/.test(email || '')) { auth.err = 'Please enter a valid email address.'; return render(); }
+  if ((kind === 'signup' || kind === 'newpass') && pw.length < 8) { auth.err = 'Please choose a password with at least 8 characters.'; return render(); }
+  if (kind === 'signin' && !pw) { auth.err = 'Please enter your password.'; return render(); }
+  auth.busy = true; render();
+  try {
+    if (kind === 'signin') { await Auth.signIn(email, pw); return enterApp(); }
+    if (kind === 'signup') { const r = await Auth.signUp(email, pw); if (r.signedIn) return enterApp(); auth.msg = `Almost done! We sent a confirmation link to ${email}. Open it on this device to finish signing up.`; auth.mode = 'signin'; }
+    if (kind === 'reset') { await Auth.sendReset(email); auth.msg = 'If an account exists for that email, a reset link is on its way. Check your inbox (and spam).'; }
+    if (kind === 'newpass') { await Auth.setNewPassword(pw); toast('Password updated.'); auth.mode = 'signin'; return enterApp(); }
+  } catch (e) { auth.err = e.message; }
+  auth.busy = false; render();
+}
+function enterApp() {
+  auth = { mode: 'signin', busy: false, err: '', msg: '' };
+  if (!S.entered) S.entered = Auth.signedIn() ? 'account' : 'guest';
+  save(); go('map');
+}
+
+/* ---------- 2. How KhaoJai teaches ---------- */
+function vNotice() {
+  return `<div class="gatehead">${jai(84, 'cheer', '#C9B6FF', 'bob')}<div><p class="eyebrow">Before you start</p><h1>Welcome to KhaoJai!</h1></div></div>
+  <section class="card stack c-lav-l"><h2>Our first goal is to help you read Thai.</h2>
+    <p>Unlike methods that begin with memorising vocabulary and sentences, KhaoJai starts by helping you recognise Thai letters, understand their sounds, learn the vowels, and gradually combine them to read Thai words.</p>
+    <p>You can use English-letter associations, romanization, picture memory aids and audio in your early lessons. As you improve, you can hide romanization and practise reading Thai on your own.</p></section>
+  <section class="card stack"><h2>Your learning journey</h2><ol class="journey">
+    ${['Recognise Thai consonants and vowels.', 'Connect Thai characters with their sounds.', 'Learn how consonants and vowels combine to form words.', 'Practise reading Thai without romanization.', 'Learn vocabulary and understand word meanings.', 'Build sentences and learn Thai grammar.', 'Develop listening, speaking, writing and everyday communication.'].map((t, i) => `<li><span class="jn ${i < 4 ? 'now' : ''}">${i + 1}</span><span>${t}${i < 4 ? ' <span class="pill info">Phase 1–2</span>' : ''}</span></li>`).join('')}</ol></section>
+  <section class="card stack c-lemon-l"><h3>Important learning notice</h3>
+    <p>KhaoJai puts <b>reading Thai first</b>, before vocabulary memorisation, sentence building and grammar.</p>
+    <p>You do <b>not</b> need to know any Thai to start. KhaoJai is made for complete beginners: you learn step by step through guided lessons, practice and short tests.</p>
+    <p>Romanization and English-letter associations are learning aids, not exact replacements for Thai pronunciation. The goal is to help you feel comfortable reading Thai script directly.</p></section>
+  <div class="row"><button class="btn big" id="nStart">${S.noticeSeen ? 'Back to learning' : 'Start learning'} ${ic('arrow')}</button></div>`;
+}
+
+/* ---------- 3. Onboarding ---------- */
+const QS = [
+  ['studied', 'Have you studied Thai before?', [['no', 'No, never'], ['little', 'A little'], ['yes', 'Yes, for a while']]],
+  ['letters', 'Can you recognise any Thai letters?', [['none', 'Not yet'], ['some', 'Some of them'], ['most', 'Most or all of them']]],
+  ['readWords', 'Can you read Thai words?', [['no', 'No'], ['slowly', 'Slowly, with effort'], ['yes', 'Yes']]],
+  ['listen', 'Can you understand spoken Thai?', [['no', 'Not really'], ['some', 'Some words and phrases'], ['yes', 'Yes, quite a lot']]],
+  ['reason', 'What is your main reason for learning Thai?', [['names', 'Read Thai names & song titles'], ['ent', 'Understand Thai entertainment (T-Pop, series)'], ['travel', 'Travel in Thailand'], ['people', 'Talk with Thai partner, family or friends'], ['live', 'Live or work in Thailand'], ['other', 'Something else']]],
+  ['skills', 'Which skills would you like to build eventually? (choose any)', [['reading', 'Reading'], ['listening', 'Listening'], ['speaking', 'Speaking'], ['writing', 'Writing']], true],
+  ['minutes', 'How much time would you like to learn each day?', [['5', '5 minutes'], ['10', '10 minutes'], ['15', '15 minutes'], ['20', '20+ minutes']]]
+];
+function vOnboard() {
+  onb = onb || { ...(S.profile || {}), skills: S.profile?.skills || ['reading'] };
+  if (onb.step === 'place') return `<div class="gatehead">${jai(84, 'think', '#C9B6FF')}<div><p class="eyebrow">Almost there</p><h1>You already know some Thai</h1></div></div>
+    <section class="card stack c-mint-l"><p>Take a short <b>placement check</b> (about 28 quick questions, 5 minutes). Lessons you show you already know are marked as passed, so you don't have to repeat them.</p>
+      <p class="small muted">This only finds a starting point — it is not a proficiency certificate. The checks at the end of each phase still test every skill.</p>
+      <div class="row"><button class="btn big" id="oPlace">Take the placement check</button><button class="btn line" id="oSkip">Start from the beginning</button></div></section>`;
+  return `<div class="gatehead">${jai(84, 'happy', '#C9B6FF')}<div><p class="eyebrow">A few quick questions</p><h1>Let's find your starting point</h1><p class="muted">Your answers set your daily goal and where you begin. You can change them later in Me.</p></div></div>
+  <form id="oForm" class="stack" novalidate>${QS.map(([k, q, opts, multi]) => `<fieldset class="card stack plain-fs"><legend class="lbl" style="font-size:16px">${q}</legend><div class="pmg">${opts.map(([v, t]) => `<label class="rc"><input type="${multi ? 'checkbox' : 'radio'}" name="${k}" value="${v}" ${multi ? (onb[k] || []).includes(v) ? 'checked' : '' : String(onb[k]) === v ? 'checked' : ''}><span class="dot"></span><span>${t}</span></label>`).join('')}</div></fieldset>`).join('')}
+    <p class="err" id="oErr" role="alert"></p>
+    <button class="btn big" type="submit">Continue ${ic('arrow')}</button></form>`;
+}
+function onboardSubmit(form) {
+  const fd = new FormData(form), p = {};
+  for (const [k, , , multi] of QS) p[k] = multi ? fd.getAll(k) : fd.get(k);
+  const missing = QS.filter(([k, , , multi]) => !multi && !p[k]);
+  if (missing.length) { document.getElementById('oErr').textContent = `Please answer: "${missing[0][1]}"`; return; }
+  p.minutes = +p.minutes; S.profile = p; save();
+  const knows = p.letters !== 'none' || p.readWords !== 'no';
+  if (knows && !S.placed) { onb = { ...p, step: 'place' }; return render(); }
+  onb = null; go('map');
+}
+function startPlacement() {
+  startLesson({ id: null, title: 'Placement check', sub: 'Find what you already know', mode: 'placement', color: 'lav', pass: 100,
+    steps: [{ t: 'intro', score: false, learn: ['Consonants, vowels and reading', 'One or two questions per lesson'], how: ['Answer on your own — skip-guessing is fine, just pick your best answer', 'Lessons where you answer everything right are marked as passed'] }, ...placementSteps()] },
+    r => { (r.placed || []).forEach(markPlaced); Object.entries(REVIEW_COVERS).forEach(([x, ids]) => { if (ids.every(isPassed)) markPlaced(x); }); S.placed = true; save(); onb = null; go('map'); });
+  route = 'play'; render(); window.scrollTo(0, 0);
+}
+
+/* ---------- 4. Dashboard ---------- */
 function vMap() {
-  const nx = nextLesson(), cs = currentStage();
-  const done = cs.lessons.filter(l => lessonState(l.id) === 'completed').length;
-  const fresh = !Object.keys(S.lessons).length;
-  if (openStage === null) openStage = cs.n;
-  const needs = ALL_LESSONS.filter(l => lessonState(l.id) === 'needs_practice');
+  const nx = nextLesson(), ph = currentPhase();
+  const passedN = ph.lessons.filter(l => isPassed(l.id)).length;
+  if (openPhase === null) openPhase = ph.n;
+  const all = Object.values(S.lessons);
+  const counts = { viewed: all.filter(l => l.viewed).length, practiced: all.filter(l => l.practiced).length, passed: all.filter(l => l.status === 'passed').length };
+  const sk = skillSummary();
+  const shown = [...PHASE1_SKILLS, ...(sk.tone ? ['tone'] : []), ...(sk.write ? ['write'] : [])];
+  const strong = shown.filter(k => sk[k]?.pct >= LEVEL.strong), weak = shown.filter(k => sk[k]?.pct !== null && sk[k]?.pct !== undefined && sk[k].pct < LEVEL.developing);
+  const tested = shown.filter(k => sk[k]?.t).sort((a, b) => sk[a].pct - sk[b].pct);
+  const rec = tested.find(k => sk[k].pct < LEVEL.strong);
+  const review = ALL_LESSONS.filter(l => lessonState(l.id) === 'needs_review');
+  const fresh = !all.length;
   return `${topbar()}
   <section class="card hero c-lav-l">
     <div class="stack" style="gap:8px;min-width:0;flex:1">
-      <p class="eyebrow">${fresh ? 'New to Thai? Start here' : `Stage ${cs.n} of 5 · ${cs.title}`}</p>
-      <h1>${fresh ? 'Learn to read and write Thai — from ก' : esc(cs.title)}</h1>
-      <p class="muted">${fresh ? 'One step at a time: letters → sounds → reading → writing → a check of each skill. No account needed.' : `After this stage you can: ${cs.can}.`}</p>
-      ${!fresh ? `<div class="bar thick" role="progressbar" aria-label="Stage progress" aria-valuenow="${done}" aria-valuemin="0" aria-valuemax="${cs.lessons.length}"><i style="width:${done / cs.lessons.length * 100}%"></i></div><p class="small"><b>${done} of ${cs.lessons.length}</b> lessons done in this stage · ${cs.lessons.length - done} to go</p>` : ''}
-      ${nx ? `<button class="btn big" data-lesson="${nx.l.id}" style="align-self:flex-start">${ic('play')} ${fresh ? 'Start learning' : lessonState(nx.l.id) === 'needs_practice' ? 'Practise again' : lessonState(nx.l.id) === 'in_progress' ? 'Continue' : 'Next lesson'}: ${esc(nx.l.title)}</button>
-        <p class="small muted">Up next: Stage ${nx.st.n} · ${esc(nx.l.title)} <span class="th" lang="th">${nx.l.th}</span></p>` : '<p><b>Foundation complete! 🎉 Real-life Thai is open below.</b></p>'}
+      <p class="eyebrow">Phase ${ph.n} · ${ph.title}</p>
+      <h1>${nx ? esc(nx.title) : 'Phase complete! 🎉'}</h1>
+      <p class="muted">${fresh ? 'Start with the first Thai letters. Every lesson ends with a short test, so you always know what you can really do.' : `Goal of this phase: ${ph.can}.`}</p>
+      ${bar(passedN / ph.lessons.length * 100, 'thick')}<p class="small"><b>${passedN} of ${ph.lessons.length}</b> lessons passed in Phase ${ph.n}</p>
+      ${nx ? `<button class="btn big" data-continue="${nx.id}" style="align-self:flex-start">${ic('play')} ${fresh ? 'Start learning' : lessonState(nx.id) === 'needs_review' ? 'Review & retake' : 'Continue learning'}</button>` : ''}
     </div>${jai(100, 'happy', '#C9B6FF', 'bob hide-xs')}
   </section>
-  ${needs.length ? `<section class="card c-peach-l row between"><div><b>Needs more practice:</b> ${needs.map(l => esc(l.title)).join(', ')}</div><button class="btn soft" data-lesson="${needs[0].id}">Practise</button></section>` : ''}
+  ${review.length ? `<section class="card c-peach-l stack"><h3>Needs review</h3>${review.map(l => `<div class="row between"><span><b>${esc(l.title)}</b> <span class="small muted">· last test ${S.lessons[l.id].testLast}% (pass ${passMark(l)}%)</span></span><span class="row"><button class="btn soft" data-remedial="${l.id}">Practise what I missed</button><button class="btn line" data-retest="${l.id}">Retake test</button></span></div>`).join('')}</section>` : ''}
   <div class="map-layout"><div class="stack gap-l">
-    ${STAGES.map(st => {
-      const open = stageOpen(st), passed = stageDone(st), expanded = openStage === st.n;
-      const n = st.lessons.filter(l => lessonState(l.id) === 'completed').length;
-      return `<section class="stage s-${st.color} ${open ? '' : 'locked'}">
-        <button class="stage-head" data-stage="${st.n}" aria-expanded="${expanded}">
-          <span class="stage-no">${passed ? ic('check') : open ? st.n : ic('lock')}</span>
-          <span class="stage-txt"><span class="small th" lang="th">${st.th}</span><b>Stage ${st.n} · ${st.title}</b><small>${passed ? 'Passed ✓' : open ? `${n} of ${st.lessons.length} done` : `Locked — pass Stage ${st.n - 1} to unlock`}</small></span>
-          ${ic('chev')}
-        </button>
-        ${expanded ? `<div class="stage-body"><p class="small">You will be able to: <b>${st.can}</b>.</p>
-          ${st.n === 5 ? `<p class="small muted">Each skill is tested on its own. Pass marks: recognition ${PASS.recognition}%, listening ${PASS.listening}%, reading ${PASS.reading}%, writing ${PASS.writing}%. You can retry any test.</p>` : ''}
-          <ol class="lessons">${st.lessons.map((l, i) => { const ok = lessonOpen(st, i); return `<li><button class="lesson-row ${lessonState(l.id)} ${ok ? '' : 'locked'}" data-lesson="${l.id}">
-            <span class="st">${lessonState(l.id) === 'completed' ? ic('check') : ok ? i + 1 : ic('lock')}</span>
-            <span class="grow"><b>${esc(l.title)}</b><br><span class="small th" lang="th">${l.th}</span>${ok ? '' : `<br><span class="small muted">${lockReason(st, i)}</span>`}</span>
-            ${ok ? statusPill(l.id, l.test) : ''}</button></li>`; }).join('')}</ol></div>` : ''}
-      </section>`; }).join('')}
-    <section class="stage s-pink ${foundationPassed() || S.unlockAll ? '' : 'locked'}">
-      <button class="stage-head" data-stage="6" aria-expanded="${openStage === 6}"><span class="stage-no">${foundationPassed() || S.unlockAll ? '6' : ic('lock')}</span>
-        <span class="stage-txt"><span class="small th" lang="th">ใช้ภาษาไทยจริง</span><b>After the foundation · Real-life Thai</b><small>${foundationPassed() || S.unlockAll ? 'Conversations, chat and culture' : 'Locked — pass all four foundation tests (Stage 5) to unlock'}</small></span>${ic('chev')}</button>
-      ${openStage === 6 ? `<div class="stage-body">${(foundationPassed() || S.unlockAll) ? LINES.map(line => `<p class="small"><b>${line.en}</b> <span class="th" lang="th">${line.th}</span></p><ol class="lessons">${line.stations.map(id => `<li><button class="lesson-row ${S.done[id] ? 'completed' : ''}" data-life="${id}"><span class="st">${S.done[id] ? ic('check') : ic('play')}</span><span class="grow"><b>${esc(STATIONS[id].en)}</b><br><span class="small th" lang="th">${STATIONS[id].th}</span></span></button></li>`).join('')}</ol>`).join('') : '<p class="small">Vocabulary, everyday conversation, Thai chat and slang, feelings and culture come after you can read and write the basics.</p>'}</div>` : ''}
+    <section class="card stack"><div class="row between"><h2>Your skills</h2><span class="small muted">Based on your most recent tests — not on lessons opened</span></div>
+      <div class="statrow">${[['Lessons viewed', counts.viewed], ['Practice done', counts.practiced], ['Tests passed', counts.passed], ['Skills strong', strong.length], ['Skills to review', weak.length]].map(([t, n]) => `<div class="mini"><b>${n}</b><span>${t}</span></div>`).join('')}</div>
+      <div class="skills">${shown.map(k => { const s = sk[k], [lv, c] = level(s?.pct); return `<div class="skillrow"><div class="row between nowrap"><span>${SKILLS[k].label}</span><span class="pill ${c}">${lv}${s?.t ? ` · ${s.pct}%` : ''}</span></div>${bar(s?.pct || 0, c === 'warn' ? 'warn' : c === 'ok' ? 'ok' : '')}</div>`; }).join('')}</div>
+      ${rec ? `<div class="row between c-sky-l recbox"><span><b>Recommended:</b> practise ${SKILLS[rec].label.toLowerCase()} (${sk[rec].pct}%).</span><button class="btn" data-skill="${rec}">Practise now</button></div>` : (tested.length ? '<p class="small">All the skills you have been tested on are strong. Keep going!</p>' : '<p class="small muted">Take your first lesson test to see your skills here.</p>')}
     </section>
+    ${PHASES.map(phaseCard).join('')}
+    ${writingCard()}
+    <p class="small"><button class="linkbtn" data-go="notice">How KhaoJai teaches</button></p>
   </div>${sidePanel()}</div>`;
 }
+function lessonRow(l) {
+  const ok = lessonOpen(l.id), st = lessonState(l.id);
+  return `<li><button class="lesson-row ${st} ${ok ? '' : 'locked'}" data-lesson="${l.id}">
+    <span class="st">${st === 'passed' ? ic('check') : ok ? (l.check ? ic('flag') : l.review ? '↻' : l.id) : ic('lock')}</span>
+    <span class="grow"><b>${esc(l.title)}</b><br><span class="small th" lang="th">${l.th}</span>${ok ? `<br><span class="small muted">Tests: ${l.skills.map(k => SKILLS[k].short).join(' · ')}</span>` : `<br><span class="small muted">${lockReason(l.id)}</span>`}</span>
+    ${ok ? statusPill(l.id) : ''}</button></li>`;
+}
+function phaseCard(ph) {
+  const open = phaseOpen(ph), done = ph.lessons.length && phasePassed(ph.n), expanded = openPhase === ph.n;
+  const n = ph.lessons.filter(l => isPassed(l.id)).length;
+  const sub = ph.soon ? 'Coming later — not built yet' : ph.life ? (open ? 'Conversations, chat and culture (early preview)' : 'Locked — pass Phase 2 to unlock') : done ? 'Passed ✓' : open ? `${n} of ${ph.lessons.length} passed` : `Locked — pass Phase ${ph.n - 1} to unlock`;
+  return `<section class="stage s-${ph.color} ${open && !ph.soon ? '' : 'locked'}">
+    <button class="stage-head" data-phase="${ph.n}" aria-expanded="${expanded}">
+      <span class="stage-no">${done ? ic('check') : open && !ph.soon ? ph.n : ic('lock')}</span>
+      <span class="stage-txt"><span class="small th" lang="th">${ph.th}</span><b>Phase ${ph.n} · ${ph.title}</b><small>${sub}</small></span>${ic('chev')}</button>
+    ${expanded ? `<div class="stage-body"><p class="small">You will be able to: <b>${ph.can}</b>.</p>
+      ${ph.soon ? '<p class="small muted">This phase is planned but its lessons are not built yet.</p>' : ''}
+      ${ph.n === 1 ? `<p class="small muted">Each lesson ends with a test (pass ${PASS.lesson}%, and at least ${PASS.skillMin}% in each skill). Reviews mix older material. The four phase checks test each skill on its own and unlock Phase 2.</p>` : ''}
+      ${ph.life ? (open ? LINES.map(line => `<p class="small"><b>${line.en}</b> <span class="th" lang="th">${line.th}</span></p><ol class="lessons">${line.stations.map(id => `<li><button class="lesson-row ${S.done[id] ? 'passed' : ''}" data-life="${id}"><span class="st">${S.done[id] ? ic('check') : ic('play')}</span><span class="grow"><b>${esc(STATIONS[id].en)}</b><br><span class="small th" lang="th">${STATIONS[id].th}</span></span></button></li>`).join('')}</ol>`).join('') : '<p class="small">Everyday conversation, chat and culture come after you can read.</p>') : `<ol class="lessons">${ph.lessons.map(lessonRow).join('')}</ol>`}
+    </div>` : ''}</section>`;
+}
+function writingCard() {
+  const expanded = openPhase === 'W', n = WRITING.lessons.filter(l => isPassed(l.id)).length;
+  return `<section class="stage s-peach"><button class="stage-head" data-phase="W" aria-expanded="${expanded}"><span class="stage-no">✍️</span>
+    <span class="stage-txt"><span class="small th" lang="th">${WRITING.th}</span><b>Writing track (optional)</b><small>${n} of ${WRITING.lessons.length} passed · alongside Phase 1</small></span>${ic('chev')}</button>
+    ${expanded ? `<div class="stage-body"><p class="small muted">Practise writing every letter. The handwriting check compares shapes only and is approximate — it does not judge stroke order. This track is not required to unlock Phase 2.</p><ol class="lessons">${WRITING.lessons.map(lessonRow).join('')}</ol></div>` : ''}</section>`;
+}
 function sidePanel() {
-  const due = dueLetters().length;
+  const due = dueLetters(), last = S.history.slice(0, 4);
   return `<aside class="panel stack">
-    <div class="card c-lemon-l row nowrap">${goalRing()}<div><p class="eyebrow">Today</p><p class="big-num">${todayPoints()} / ${DAILY_GOAL}</p><p class="small muted">points</p></div></div>
-    <div class="card c-sky-l stack"><h3>Letter review</h3><p class="small">${due ? `${due} letter${due > 1 ? 's' : ''} ready to review.` : 'Nothing due — letters come back here when it\'s time to review them.'}</p>${due ? '<button class="btn" data-review="due">Review now</button>' : ''}</div>
+    <div class="card c-lemon-l row nowrap">${goalRing()}<div><p class="eyebrow">Today</p><p class="big-num">${todayPoints()} / ${dailyGoal()}</p><p class="small muted">points</p></div></div>
+    <div class="card c-sky-l stack"><h3>Review</h3><p class="small">${due.length ? `${due.length} letter${due.length > 1 ? 's' : ''} or vowel${due.length > 1 ? 's' : ''} ready to review.` : 'Nothing due — things you learn come back here when it\'s time to review them.'}</p>${due.length ? '<button class="btn" data-review="due">Review now</button>' : ''}</div>
+    <div class="card stack"><h3>Recent tests</h3>${last.length ? last.map(h => `<div class="row between nowrap small"><span>${esc(LESSON[h.id]?.title || h.id)}</span><span class="pill ${h.passed ? 'ok' : 'warn'}">${h.score}% ${h.passed ? '✓' : ''}</span></div>`).join('') : '<p class="small muted">No tests yet.</p>'}</div>
     <div class="card c-mint-l stack"><h3>Tools</h3><button class="btn line" data-go="letters" data-sub="chart">Alphabet chart ก–ฮ</button><button class="btn line" data-go="letters" data-sub="sing">Sing-along ก–ฮ</button><button class="btn line" data-go="decoder">Thai Decoder</button></div>
   </aside>`;
 }
 function goalRing(size = 60) {
-  const v = Math.min(1, todayPoints() / DAILY_GOAL), c = 2 * Math.PI * 15;
+  const v = Math.min(1, todayPoints() / dailyGoal()), c = 2 * Math.PI * 15;
   return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 36 36" role="img" aria-label="Daily goal"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--lemon-l)" stroke-width="5"/>${v > 0 ? `<circle cx="18" cy="18" r="15" fill="none" stroke="var(--lemon-d)" stroke-width="5" stroke-linecap="round" stroke-dasharray="${(v * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 18 18)"/>` : ''}</svg>`;
 }
 
+/* ---------- running lessons ---------- */
+const colorOf = id => phaseOf(id).color;
 function openLesson(id) {
-  const l = LESSON[id], st = STAGES[l.stage - 1], idx = st.lessons.findIndex(x => x.id === id);
-  if (!lessonOpen(st, idx)) return toast(lockReason(st, idx) + '.');
-  if (l.kind === 'recite') { markStarted(id); return go('letters', 'recite'); }
-  const nxt = after(id);
-  startLesson({ id, title: l.title, sub: `Stage ${st.n} · ${st.title}`, steps: l.build(), color: st.color, pass: passMark(l), test: !!l.test, nextTitle: nxt && !nxt.kind ? nxt.title : nxt ? nxt.title : null, hideRom: false }, afterLesson);
+  const l = LESSON[id];
+  if (!lessonOpen(id)) return toast(lockReason(id) + '.');
+  const nxt = nextAfter(id);
+  startLesson({ id, title: l.title, sub: `${l.phase === 'W' ? 'Writing track' : `Phase ${l.phase} · ${phaseOf(id).title}`}`, mode: 'lesson', steps: [...l.teach(), ...l.test()], color: colorOf(id), pass: passMark(l), nextTitle: nxt?.title }, afterLesson);
+  route = 'play'; render(); window.scrollTo(0, 0);
+}
+function retest(id) {
+  const l = LESSON[id], nxt = nextAfter(id);
+  startLesson({ id, title: l.title, mode: 'test', color: colorOf(id), pass: passMark(l), nextTitle: nxt?.title,
+    steps: [{ t: 'intro', score: false, learn: ['A new set of test questions for this lesson'], how: ['Only your first answer counts', `Pass mark ${passMark(l)}%, and at least ${PASS.skillMin}% in each skill`] }, ...l.test()] }, afterLesson);
+  route = 'play'; render(); window.scrollTo(0, 0);
+}
+function remedial(id) {
+  const l = LESSON[id], missed = S.lessons[id]?.missed || [];
+  const steps = remedialSteps(missed);
+  if (!steps.length) return retest(id);
+  startLesson({ id: null, title: `Practise: ${l.title}`, mode: 'practice', color: colorOf(id), steps: [{ t: 'intro', score: false, learn: [`Only the ${missed.length} item${missed.length === 1 ? '' : 's'} you missed in the test`], how: ['Look at each one again', 'Answer a new question about it', 'Then retake the test'] }, ...steps], retestId: id }, afterLesson);
   route = 'play'; render(); window.scrollTo(0, 0);
 }
 function afterLesson(r) {
-  if (r.to === 'retry' && r.id) return openLesson(r.id);
-  if (r.to === 'next' && r.id) { const n = after(r.id); if (n) { openStage = n.stage; return openLesson(n.id); } }
-  if (r.id && LESSON[r.id]) openStage = LESSON[r.id].stage;
+  if (r.to === 'remedial' && r.id) return remedial(r.id);
+  if (r.to === 'retest' && (r.id || lastRetest)) return retest(r.id || lastRetest);
+  if (r.to === 'next' && r.id) { const n = nextAfter(r.id); if (n) { openPhase = LESSON[n.id].phase; return openLesson(n.id); } }
+  if (r.id && LESSON[r.id]) openPhase = LESSON[r.id].phase;
   go('map');
+}
+let lastRetest = null;
+function startPractice(title, steps, color = 'sky', retestId) {
+  if (!steps.length) return toast('Nothing to practise yet — pass a lesson first.');
+  lastRetest = retestId || null;
+  startLesson({ id: null, title, steps, color, mode: 'practice', retestId }, r => { if (r.to === 'retest' && lastRetest) return retest(lastRetest); go(route === 'play' ? 'map' : route); });
+  route = 'play'; render(); window.scrollTo(0, 0);
 }
 function openLife(id) {
   const st = STATIONS[id], line = LINES.find(l => l.stations.includes(id));
-  startLesson({ id: null, title: st.en, steps: st.ex, color: line.color, pass: PASS.lesson, words: st.words }, r => { if (r.passed) { S.done[id] = { best: 100 }; save(); } openStage = 6; go('map'); });
+  startLesson({ id: null, title: st.en, steps: st.ex.map(s => ({ ...s, test: true })), color: line.color, mode: 'test', pass: PASS.lesson, words: st.words }, r => { if (r.passed) { S.done[id] = { best: 100 }; save(); } openPhase = 5; go('map'); });
   route = 'play'; render();
 }
-function startDrill(kind, letters) {
-  let steps = [], title = '', color = 'sky';
-  if (kind === 'time') { steps = TIME_DRILL; title = 'Thai time & money'; color = 'mint'; }
-  if (kind === 'letters') { steps = reviewDrill(letters); title = 'Letter review'; }
-  if (!steps.length) return toast('Nothing to review yet — finish a Stage 1 lesson first.');
-  startLesson({ id: null, title, steps, color, pass: PASS.lesson }, () => go('practice'));
-  route = 'play'; render();
-}
+const learnedKeys = () => Object.keys(S.cards);
 
 /* ---------- Letters ก–ฮ hub ---------- */
 const GROUPS4 = [0, 11, 22, 33].map(s => LETTERS.slice(s, s + 11).map(x => x.c));
 function vLetters() {
-  const tabs = [['chart', 'Chart'], ['sing', 'Sing-along'], ['recite', 'Recite & record'], ['write', 'Writing practice']];
-  return `${topbar()}<div class="pagehead"><h1>Letters ก–ฮ</h1><p class="muted">All 44 consonants with their names, sounds and pictures. Use these tools any time — they don't change your path.</p></div>
+  const tabs = [['chart', 'Chart'], ['vowels', 'Vowels'], ['sing', 'Sing-along'], ['recite', 'Recite & record'], ['write', 'Writing practice']];
+  return `${topbar()}<div class="pagehead"><h1>Letters ก–ฮ</h1><p class="muted">All 44 consonants and the vowels, with names, sounds, English helpers and pictures. Use these tools any time — they don't change your path.</p></div>
   <div class="seg wide" role="tablist">${tabs.map(([k, t]) => `<button role="tab" data-ltab="${k}" aria-pressed="${lettersTab === k}">${t}</button>`).join('')}</div>
-  ${({ chart: vChart, sing: vSing, recite: vRecite, write: vStudio })[lettersTab]()}`;
+  ${({ chart: vChart, vowels: vVowels, sing: vSing, recite: vRecite, write: vStudio })[lettersTab]()}`;
 }
 function vChart() {
   return `<div class="row"><span class="pill cls-mid">Mid class · 9</span><span class="pill cls-high">High class · 11</span><span class="pill cls-low">Low class · 24</span><button class="linkbtn" data-sheet="romguide">How to read the romanization</button></div>
-  <div class="chart">${LETTERS.map(x => `<button class="ltile cls-${x.cls} ${x.old ? 'old' : ''}" data-letter="${x.c}"><span class="th" lang="th">${x.c}</span><small lang="th">${x.word}</small>${S.rom ? `<small class="rom">${x.rom}</small>` : ''}</button>`).join('')}</div>
-  <p class="small muted">Faded tiles (ฃ ฅ) are no longer used but are still part of the alphabet. Picture cues are placeholder emoji until KhaoJai's own illustrations are ready.</p>`;
+  <div class="chart">${LETTERS.map(x => `<button class="ltile cls-${x.cls} ${x.old ? 'old' : ''}" data-letter="${x.c}"><span class="engtag">${x.eng}</span><span class="th" lang="th">${x.c}</span><small lang="th">${x.word}</small>${S.rom ? `<small class="rom">${x.rom}</small>` : ''}</button>`).join('')}</div>
+  <p class="small muted">The small English letter on each tile is a memory aid, not an exact sound. Faded tiles (ฃ ฅ) are no longer used. Picture cues are placeholder emoji until KhaoJai's own illustrations are ready.</p>`;
+}
+function vVowels() {
+  return `<p class="small muted">อ shows where the consonant goes. Tap a vowel to hear its example word.</p>
+  <div class="chart">${VOWELS.map(v => `<button class="ltile cls-mid" data-say="${v.eg[0]}"><span class="th" lang="th">${v.v}</span><small>${S.rom ? v.rom + ' · ' : ''}${v.len}</small><small lang="th">${v.eg[0]}</small></button>`).join('')}</div>`;
 }
 
 // Sing-along: reads every letter name in order with on-screen karaoke highlighting.
@@ -206,11 +371,10 @@ function vSing() {
 }
 
 // Recite & record: listen, record yourself, compare. Recordings stay in this tab only.
-let rec = { g: 0, media: null, chunks: [], url: null, recording: false, consent: false };
+let rec = { g: 0, media: null, chunks: [], url: null, recording: false };
 function vRecite() {
   const g = GROUPS4[rec.g], info = S.recite.groups[rec.g] || { attempts: 0 };
-  const lessonNote = lessonState('S6') !== 'completed' ? `<p class="small"><b>Lesson S6:</b> recite all four groups (record yourself, or say them out loud and tick "I recited it") to complete this lesson. Done: ${GROUPS4.filter((_, i) => S.recite.groups[i]?.attempts).length} / 4.</p>` : '<p class="small"><span class="pill ok">Lesson S6 completed</span></p>';
-  return `<section class="card c-sky-l stack">${lessonNote}
+  return `<section class="card c-sky-l stack">
     <div class="seg" role="group" aria-label="Letter group">${GROUPS4.map((gr, i) => `<button data-rgroup="${i}" aria-pressed="${rec.g === i}">${gr[0]}–${gr[gr.length - 1]}${S.recite.groups[i]?.attempts ? ' ✓' : ''}</button>`).join('')}</div>
     <div class="recgroup">${g.map(c => `<button class="rchip ${S.recite.weak.includes(c) ? 'weak' : ''}" data-weak="${c}" title="Tap to mark for more practice"><span class="th" lang="th">${c}</span><small lang="th">${L[c].say} ${L[c].word}</small>${S.rom ? `<small class="rom">${L[c].rom}</small>` : ''}</button>`).join('')}</div>
     <ol class="steps"><li>Listen to the reference.</li><li>Record yourself saying the names in order.</li><li>Play both and compare. Tap any letter you found hard to mark it for practice.</li></ol>
@@ -220,7 +384,7 @@ function vRecite() {
     ${rec.url ? `<audio controls src="${rec.url}" id="recAudio"></audio><div class="row"><button class="btn line" id="recDelete">${ic('trash')} Delete my recording</button></div>` : ''}
     <div class="row"><button class="btn soft" id="recDone">I recited this group ✓</button><span class="small muted">Attempts: ${info.attempts || 0}${info.last ? ` · last ${new Date(info.last).toLocaleDateString('en-GB')}` : ''}</span></div>
   </section>
-  <p class="small muted">${ic('shield')} Privacy: the microphone is only used while you press Record. Your recording stays in this browser tab and is deleted when you tap Delete or leave this page — nothing is uploaded. Automatic pronunciation scoring is not available yet; comparing by ear is the honest check for now.</p>`;
+  <p class="small muted">${ic('shield')} Privacy: the browser asks for microphone permission when you first press Record, and the microphone is used only while recording. Your recording stays in this browser tab and is deleted when you tap Delete or leave the page — nothing is uploaded or saved to your account. There is no automatic pronunciation score; comparing by ear is the honest check for now.</p>`;
 }
 function playSeq(letters, done) {
   let i = 0;
@@ -247,11 +411,10 @@ async function startRecording() {
 function logRecite(recorded) {
   const gi = S.recite.groups[rec.g] || (S.recite.groups[rec.g] = { attempts: 0 });
   gi.attempts++; gi.last = Date.now(); if (recorded) gi.recorded = true;
-  if (GROUPS4.every((_, i) => S.recite.groups[i]?.attempts) && lessonState('S6') !== 'completed') { recordResult('S6', 100, 0, []); toast('Lesson S6 complete — you recited the whole alphabet!'); }
   save();
 }
 
-// Writing practice studio: any letter, trace or from memory, with the approximate shape check.
+// Writing practice studio.
 function vStudio() {
   const x = L[studio.c];
   return `<section class="card c-peach-l stack">
@@ -259,27 +422,34 @@ function vStudio() {
       <div class="seg"><button data-sguide="1" aria-pressed="${studio.guide}">Trace</button><button data-sguide="0" aria-pressed="${!studio.guide}">From memory</button></div></div>
     <div class="padwrap"><canvas id="studioPad" class="pad" aria-label="Writing area"></canvas></div>
     <div class="row center"><button class="btn line" id="sClear">Clear</button><button class="btn" id="sCheck">Check shape</button></div>
-    ${studio.score !== null ? `<p class="center"><b>Shape match: ${studio.score}%</b> ${studio.score >= (studio.guide ? PASS.trace : PASS.write) ? '— nice!' : '— try again, keep the loops round and the size even.'}<br><span class="small muted">Approximate check: compares shapes only, not stroke order.</span></p>` : '<p class="small muted center">Start at the head (the small loop) and write in one stroke where you can.</p>'}
+    ${studio.score !== null ? `<p class="center"><b>Shape match: ${studio.score}%</b> ${studio.ok ? '— nice!' : '— try again, keep the loops round and the size even.'}${studio.best?.length ? `<br>Looks most like: <b class="th" lang="th">${studio.best.join(' ')}</b>` : ''}<br><span class="small muted">Approximate check: compares shapes only, not stroke order.</span></p>` : '<p class="small muted center">Start at the head (the small loop) and write in one stroke where you can.</p>'}
   </section>
   <div class="chart small">${LETTERS.map(l => `<button class="ltile cls-${l.cls} ${l.c === studio.c ? 'sel' : ''}" data-studio="${l.c}"><span class="th" lang="th">${l.c}</span></button>`).join('')}</div>`;
 }
 
 /* ---------- Practice ---------- */
+function buildDeck() {
+  const trouble = troubleLetters(), due = dueLetters().filter(isLetter), learned = learnedKeys().filter(isLetter);
+  const base = learned.length ? learned : LETTERS.slice(0, 6).map(x => x.c);
+  const shuffled = base.slice().sort(() => Math.random() - .5);
+  fc = { deck: [...new Set([...trouble, ...due, ...shuffled])], i: 0, flip: false };
+}
 function vPractice() {
-  const due = dueLetters(), trouble = troubleLetters(), learned = Object.keys(S.cards);
-  const words = learned.length ? learned : LETTERS.slice(0, 6).map(x => x.c);
-  const c = words[fc.i % words.length], x = L[c];
-  return `${topbar()}<div class="pagehead"><h1>Practice</h1><p class="muted">Short reviews of what you've learned. Letters you miss come back sooner.</p></div>
+  if (!fc.deck.length) buildDeck();
+  const due = dueLetters(), trouble = troubleLetters(), c = fc.deck[fc.i % fc.deck.length], x = L[c];
+  const sk = skillSummary();
+  return `${topbar()}<div class="pagehead"><h1>Practice</h1><p class="muted">Short practice sets. Practice never changes a test result — it helps you get ready for the next one.</p></div>
   <div class="grid g3">
-    <button class="card drill c-sky-l" data-review="due"><span class="clockface th" lang="th">ก ข ค</span><h3>Letter review</h3><p class="small">${due.length ? `${due.length} letters are due today` : 'Nothing due — try "Trouble letters"'}</p></button>
+    <button class="card drill c-sky-l" data-review="due"><span class="clockface th" lang="th">ก ข ค</span><h3>Review what's due</h3><p class="small">${due.length ? `${due.length} items are due today` : 'Nothing due — try trouble letters'}</p></button>
     <button class="card drill c-pink-l" data-review="trouble"><span class="clockface th" lang="th">${trouble.slice(0, 3).join(' ') || '—'}</span><h3>Trouble letters</h3><p class="small">${trouble.length ? 'The letters you miss most' : 'None yet — great!'}</p></button>
     <button class="card drill c-mint-l" data-drill="time"><span class="clockface">19:00</span><h3>Thai time & money</h3><p class="small">หนึ่งทุ่ม, บ่ายโมง, baht & satang</p></button>
   </div>
+  <section class="card stack"><h2>Practise one skill</h2><div class="chips">${[...PHASE1_SKILLS, 'tone', 'write'].map(k => `<button class="chip" data-skill="${k}">${SKILLS[k].short}${sk[k]?.t ? ` · ${sk[k].pct}%` : ''}</button>`).join('')}</div></section>
   <section class="card stack c-lav-l">
-    <div class="row between"><h2>Letter cards</h2><span class="pill">${fc.i % words.length + 1} / ${words.length}${learned.length ? '' : ' · starter set'}</span></div>
+    <div class="row between"><h2>Letter flashcards</h2><span class="pill">${fc.i % fc.deck.length + 1} / ${fc.deck.length}${learnedKeys().some(isLetter) ? ' · missed letters first' : ' · starter set'}</span></div>
     <button class="flash ${fc.flip ? 'flipped' : ''}" id="flash" aria-label="Flip card"><span class="flash-in">
       <span class="face"><span class="th big" lang="th">${c}</span><span class="small muted">What is this letter called? Tap to check.</span></span>
-      <span class="face back"><span class="th" lang="th" style="font-size:24px">${x.say} ${x.word}</span><span class="rom">${x.rom}</span><b>${x.pic} ${x.en}</b></span></span></button>
+      <span class="face back"><span class="th" lang="th" style="font-size:24px">${x.say} ${x.word}</span><span class="rom">${x.rom} · English helper: ${x.eng}</span><b>${x.pic} ${x.en}</b></span></span></button>
     <div class="row nowrap"><button class="btn line" data-say="${x.say} ${x.word}" aria-label="Listen">${ic('sound')}</button>
       <button class="btn line grow" data-rate="again">Again</button><button class="btn line grow" data-rate="good">Good</button><button class="btn grow" data-rate="easy">Easy</button></div>
   </section>`;
@@ -307,33 +477,33 @@ function vDecoder() {
 
 /* ---------- Me ---------- */
 function vMe() {
-  const tests = STAGES[4].lessons;
   const row = (icn, title, sub, ctrl, forId) => `<div class="setting"><${forId ? `label for="${forId}"` : 'span'} class="row nowrap">${ic(icn)}<span><b>${title}</b>${sub ? `<br><span class="small muted">${sub}</span>` : ''}</span></${forId ? 'label' : 'span'}>${ctrl}</div>`;
   const tog = (id, on, label) => `<label class="toggle"><input type="checkbox" id="${id}" ${on ? 'checked' : ''} aria-label="${label}"><span></span></label>`;
+  const acct = Auth.signedIn();
+  const sync = Auth.syncState;
   return `${topbar()}
-  <section class="card c-lav-l row nowrap me-head">${jai(80, 'happy')}<div class="stack" style="gap:4px;min-width:0"><h1>Guest learner</h1><p class="small">Playing without an account. Progress is saved on this device only.</p><span class="pill">Accounts & sync: coming soon</span></div></section>
-  <div class="stats4">
-    <div class="stat c-lav-l"><b>${knownLetters()}/44</b><span>letters known well</span></div>
-    <div class="stat c-mint-l"><b>${ALL_LESSONS.filter(l => lessonState(l.id) === 'completed').length}/${ALL_LESSONS.length}</b><span>foundation lessons</span></div>
-    <div class="stat c-lemon-l"><b>${S.streak}</b><span>days in a row</span></div>
-    <div class="stat c-pink-l"><b>${currentStage().n}</b><span>current stage</span></div>
-  </div>
-  <section class="card stack"><h2>Foundation skills</h2><p class="small muted">Each skill is checked separately in Stage 5.</p>
-    ${tests.map(t => `<div class="setting"><span><b>${t.title.replace(' test', '')}</b><br><span class="small muted">pass mark ${passMark(t)}%</span></span>${statusPill(t.id, true)}</div>`).join('')}</section>
+  <section class="card c-lav-l row nowrap me-head">${jai(80, 'happy')}<div class="stack" style="gap:4px;min-width:0">
+    <h1>${acct ? 'My account' : 'Guest learner'}</h1>
+    ${acct ? `<p class="small">Signed in as <b>${esc(Auth.user()?.email || '')}</b>. Your progress is saved to your account.</p><p class="small muted">${sync.status === 'saving' ? 'Saving…' : sync.status === 'saved' ? 'All progress saved ✓' : sync.status === 'offline' ? 'Offline — progress will be saved when you are back online.' : sync.status === 'error' ? `Couldn't save just now: ${esc(sync.error)}` : ''}</p>`
+      : `<p class="small">Learning without an account. Progress is saved on this device only.</p>`}
+    <div class="row">${acct ? '<button class="btn line" id="mOut">Sign out</button>' : Auth.configured() ? '<button class="btn" id="mSignIn">Sign in or create an account</button>' : '<span class="pill">Accounts: coming soon</span>'}</div></div></section>
+  <section class="card stack"><h2>My learning</h2>
+    ${S.profile ? `<p class="small">Goal: <b>${QS[4][2].find(o => o[0] === S.profile.reason)?.[1] || '—'}</b> · ${S.profile.minutes} min a day (${dailyGoal()} points)</p>` : ''}
+    <div class="row"><button class="btn line" data-go="notice">How KhaoJai teaches</button><button class="btn line" id="mOnb">Change my answers</button>${!S.placed ? '<button class="btn line" id="mPlace">Take the placement check</button>' : ''}</div></section>
   <div class="grid g2">
     <button class="card tile c-mint-l" data-go="homework">${ic('homework')}<span><b>Homework Studio</b><br><span class="small">AI check or a real Thai reviewer</span></span>${ic('chev')}</button>
     <button class="card tile c-lemon-l" data-go="plans">${ic('star')}<span><b>KhaoJai Plus</b><br><span class="small">Plans & payment (demo)</span></span>${ic('chev')}</button>
   </div>
   <section class="card"><h2>Settings</h2>
-    ${row('bulb', 'Show romanization', 'On by default for beginners. You can also hide it inside any lesson.', tog('sRom', S.rom, 'Show romanization'))}
+    ${row('bulb', 'Show romanization', 'On by default for beginners. You can also hide it inside any lesson. Reading tests hide it.', tog('sRom', S.rom, 'Show romanization'))}
     ${row('globe', 'How romanization works', 'KhaoJai\'s spelling system and its limits', '<button class="btn line" data-sheet="romguide">Read</button>')}
     ${row('sound', 'Sound', 'Play Thai audio', tog('sSound', S.sound, 'Sound'))}
-    ${row('lock', 'Adult language lessons', 'Insults & profanity, 18+ (after the foundation, coming later)', tog('sAdult', S.adult, 'Adult language lessons'))}
+    ${row('lock', 'Adult language lessons', 'Insults & profanity, 18+ (later phases)', tog('sAdult', S.adult, 'Adult language lessons'))}
     ${row('map', 'Unlock everything (testing)', 'For reviewing the app — normally lessons unlock in order', tog('sUnlock', S.unlockAll, 'Unlock everything'))}
     ${row('phone', 'Install on your phone or computer', 'iPhone, Android, Windows, Mac', '<button class="btn line" data-sheet="install">How</button>')}
-    ${row('trash', 'Reset progress', 'Start again from the first lesson', '<button class="btn line" id="sReset">Reset</button>')}
+    ${row('trash', 'Reset progress', acct ? 'Start again from the first lesson (also resets your account\'s progress)' : 'Start again from the first lesson', '<button class="btn line" id="sReset">Reset</button>')}
   </section>
-  <p class="small muted center">KhaoJai early preview · v0.4 · Thai Foundation</p>`;
+  <p class="small muted center">KhaoJai early preview · v0.5 · Reading Foundations</p>`;
 }
 
 /* ---------- Homework & Plans (unchanged features) ---------- */
@@ -354,7 +524,7 @@ function vHomework() {
 }
 const baht = n => n === 0 ? '฿0' : '฿' + n.toLocaleString('en-US');
 function vPlans() {
-  return `${topbar()}<div class="pagehead"><h1>KhaoJai Plus</h1><p class="muted">The Thai Foundation is free. Plus adds AI practice and human homework review.</p></div>
+  return `${topbar()}<div class="pagehead"><h1>KhaoJai Plus</h1><p class="muted">Reading Foundations are free. Plus adds AI practice and human homework review.</p></div>
   <div class="row between"><div class="seg" role="group" aria-label="Billing period"><button data-bill="monthly" aria-pressed="${billing === 'monthly'}">Monthly</button><button data-bill="yearly" aria-pressed="${billing === 'yearly'}">Yearly · save 23%</button></div><span class="demo">Sample prices · demo checkout</span></div>
   <div class="plans">${Object.entries(PLANS).map(([k, p]) => { const v = (billing === 'yearly' && !p.once) ? p.y : p.m; return `<article class="card plan c-${p.color === 'white' ? 'white' : p.color + '-l'}">${k === 'plus' ? '<span class="pill hot">Most popular</span>' : '<span class="pill" style="visibility:hidden">·</span>'}<h2>${p.name}</h2><p><span class="price">${baht(v)}</span> <span class="muted">${p.m === 0 ? 'forever' : p.once ? 'one-time' : billing === 'yearly' ? '/ year' : '/ month'}</span></p><ul>${p.f.map(x => `<li>${ic('check')}<span>${x}</span></li>`).join('')}</ul>${k === 'free' ? '<button class="btn line block" disabled>You\'re on Free</button>' : `<button class="btn block ${k === 'review' ? 'soft' : ''}" data-buy="${k}" ${k === 'plus' && S.plan === 'plus' ? 'disabled' : ''}>${k === 'plus' ? (S.plan === 'plus' ? 'Active' : 'Get Plus') : 'Buy 5 reviews'}</button>`}</article>`; }).join('')}</div>
   <section class="card stack"><h3>Ways to pay</h3><div class="chips">${['Visa', 'Mastercard', 'JCB', 'AmEx', 'UnionPay', 'PromptPay', 'TrueMoney', 'K PLUS', 'SCB', 'Krungthai', 'Apple Pay', 'Google Pay', 'PayPal'].map(x => `<span class="chip">${x}</span>`).join('')}</div><p class="small muted">This checkout is a demo and never charges.</p></section>`;
@@ -377,6 +547,7 @@ function letterSheet() {
   const fam = SAME_SOUND.find(f => f.letters.includes(x.c));
   return `<div class="sheet-head c-lav-l"><span class="bigchar cls-${x.cls}" lang="th">${x.c}</span><div style="flex:1;min-width:0"><p class="th lname" lang="th">${x.say} ${x.word}</p><p class="rom always">${x.rom}</p></div>${closeBtn}</div>
   <div class="row"><button class="btn" data-say="${x.say} ${x.word}">${ic('sound')} Listen</button><button class="btn line" data-say-slow="${x.say} ${x.word}">${ic('slow')} Slowly</button><button class="btn line" data-studio="${x.c}" data-go="letters" data-sub="write">✍️ Practise writing</button></div>
+  <div class="enghelp"><span class="engletter">${x.eng}</span><p><b>English helper:</b> ${x.tip}<br><span class="small muted">A memory aid only — not an exact sound.</span></p></div>
   <div class="lpic"><span class="emoji" aria-hidden="true">${x.pic}</span><div><b class="th" lang="th">${x.word}</b> — ${x.en}</div></div>
   <dl class="facts"><dt>Sound at the start</dt><dd><b>${s.rom}</b> <span class="muted">${s.ipa}</span> — ${s.en}${s.vs ? `<br><span class="small">${s.vs}</span>` : ''}</dd>
     <dt>Class</dt><dd><span class="pill cls-${x.cls}">${x.cls} class</span> <span class="th small" lang="th">${CLASS_INFO[x.cls].th}</span></dd>
@@ -387,14 +558,15 @@ function romSheet() {
   return `<div class="sheet-head c-mint-l">${jai(52, 'happy')}<div style="flex:1"><h2>How KhaoJai romanization works</h2><p class="small">Thai written with English letters — a helper, not a replacement for Thai script.</p></div>${closeBtn}</div>
   <div class="card stack"><p><b>It is an approximation.</b> English letters can't show every Thai sound, and they don't show the tone. Always listen to the audio, and switch romanization off when you're ready to read Thai.</p>
   <div class="tablewrap"><table class="rules">
-    <tr><td><b>g · dt · bp · j</b></td><td>No puff of air: ก ต ป จ (like the k in "skin", t in "stop", p in "spin")</td></tr>
+    <tr><td><b>g · dt · bp · j</b></td><td>Soft, no puff of air: ก ต ป จ (like the k in "skin", t in "stop", p in "spin")</td></tr>
     <tr><td><b>k · t · p · ch</b></td><td>With a puff of air: ข ค · ท ถ · พ ผ · ช ฉ (like "kite", "top", "pin", "chair")</td></tr>
     <tr><td><b>ng</b></td><td>ง — the "ng" of "sing", also at the start of words</td></tr>
-    <tr><td><b>aa · ee · oo</b></td><td>Long vowels า ี ู (a doubled letter = long). Short: a · i · u</td></tr>
-    <tr><td><b>eh · ae · oh · or</b></td><td>Long เ แ โ ออ</td></tr>
-    <tr><td><b>ai · ao · am</b></td><td>ไ / ใ · เา · ำ</td></tr>
-    <tr><td><b>ue · uea</b></td><td>อึ/อือ (say "ee" with unrounded lips) · เอือ</td></tr></table></div>
-  <p class="small">Tones are shown separately as a tone name (mid, low, falling, high, rising) when they matter, not with accent marks.</p>
+    <tr><td><b>a / aa · i / ee · u / oo</b></td><td>Short / long: อะ อา · อิ อี · อุ อู (a doubled letter = long)</td></tr>
+    <tr><td><b>e / eh · ae · o / oh · or</b></td><td>เอะ เอ · แอะ แอ · โอะ โอ · เอาะ ออ</td></tr>
+    <tr><td><b>ue / uue · er</b></td><td>อึ อือ (say "ee" with flat lips) · เออ</td></tr>
+    <tr><td><b>ia · uea · ua</b></td><td>เอีย · เอือ · อัว</td></tr>
+    <tr><td><b>ai · ao · am</b></td><td>ไ / ใ · เา · ำ</td></tr></table></div>
+  <p class="small">Short and long partners can share a spelling (แอะ and แอ are both "ae"); lessons always say which is long or short. Tones are shown separately as a tone name when they matter.</p>
   <p class="small">In everyday chat you'll see other spellings, like "sawasdee ka". KhaoJai keeps to one system so you never have to guess.</p></div>`;
 }
 function installSheet() {
@@ -408,12 +580,14 @@ function render() {
   const main = document.getElementById('main');
   if (route === 'play') { main.innerHTML = renderPlayer(); mountPlayer(render); }
   else {
-    main.innerHTML = `<div class="view">${({ map: vMap, letters: vLetters, practice: vPractice, decoder: vDecoder, me: vMe, homework: vHomework, plans: vPlans })[route]()}</div>`;
+    const views = { auth: vAuth, notice: vNotice, onboard: vOnboard, map: vMap, letters: vLetters, practice: vPractice, decoder: vDecoder, me: vMe, homework: vHomework, plans: vPlans };
+    main.innerHTML = `<div class="view ${GATE.includes(route) ? 'narrow' : ''}">${views[route]()}</div>`;
     if (route === 'letters' && lettersTab === 'sing') paintSing();
     if (route === 'letters' && lettersTab === 'write') { const cv = document.getElementById('studioPad'); if (cv) mountPad(cv, { c: studio.c, guide: studio.guide, strokes: studio.strokes, reveal: studio.score !== null && !studio.guide }); }
   }
   nav();
 }
+Auth.onSyncChange(() => { if (route === 'me') render(); });
 
 /* ---------- events ---------- */
 document.addEventListener('click', e => {
@@ -427,12 +601,25 @@ document.addEventListener('click', e => {
   if (d.p) return playerAction(t, render);
   if (d.close !== undefined) return closeSheet();
   if (d.sheet) return openSheet(d.sheet);
-  if (d.toast) return toast(d.toast);
+  if (d.amode) { auth = { mode: d.amode, busy: false, err: '', msg: auth.msg && d.amode === 'signin' ? auth.msg : '' }; return render(); }
+  if (t.id === 'aGuest') { S.entered = 'guest'; save(); return go('map'); }
+  if (t.id === 'aGoogle') { auth.busy = true; render(); return Auth.signInGoogle(); }
+  if (t.id === 'nStart') { S.noticeSeen = true; save(); return go('map'); }
+  if (t.id === 'oPlace') { S.placed = true; save(); return startPlacement(); }
+  if (t.id === 'oSkip') { onb = null; return go('map'); }
+  if (t.id === 'mOnb') { onb = null; S.profile = null; return go('onboard'); }
+  if (t.id === 'mPlace') return startPlacement();
+  if (t.id === 'mSignIn') { S.entered = ''; auth = { mode: 'signin', busy: false, err: '', msg: '' }; return go('auth'); }
+  if (t.id === 'mOut') { Auth.signOut().then(() => { resetAll(); toast('Signed out. Your progress is safe in your account.'); go('auth'); }); return; }
+  if (d.continue) { return lessonState(d.continue) === 'needs_review' ? remedial(d.continue) : openLesson(d.continue); }
   if (d.lesson) return openLesson(d.lesson);
+  if (d.remedial) return remedial(d.remedial);
+  if (d.retest) return retest(d.retest);
   if (d.life) return openLife(d.life);
-  if (d.stage) { openStage = openStage === +d.stage ? 0 : +d.stage; return render(); }
-  if (d.review) { const set = d.review === 'due' ? dueLetters() : troubleLetters(); return startDrill('letters', set.length ? set : Object.keys(S.cards)); }
-  if (d.drill) return startDrill(d.drill);
+  if (d.phase) { const v = d.phase === 'W' ? 'W' : +d.phase; openPhase = openPhase === v ? 0 : v; return render(); }
+  if (d.skill) return startPractice(`Practise: ${SKILLS[d.skill].label}`, skillDrill(d.skill, learnedKeys()));
+  if (d.review) { const set = d.review === 'due' ? dueLetters() : troubleLetters(); return startPractice(d.review === 'due' ? 'Review' : 'Trouble letters', reviewDrill(set.length ? set : learnedKeys())); }
+  if (d.drill) return startPractice('Thai time & money', TIME_DRILL.map(s => ({ ...s })), 'mint');
   if (d.letter) { sheetLetter = d.letter; say(`${L[d.letter].say} ${L[d.letter].word}`); return openSheet('letter'); }
   if (d.ltab) { stopSing(); lettersTab = d.ltab; return render(); }
   if (d.kara !== undefined) { sing.i = +d.kara; const was = sing.on; stopSing(); if (was) { sing.on = true; singStep(); } else { paintSing(); const x = LETTERS[sing.i]; say(`${x.say} ${x.word}`); } return; }
@@ -449,14 +636,14 @@ document.addEventListener('click', e => {
   if (d.studio) return render();
   if (d.sguide !== undefined) { studio.guide = d.sguide === '1'; studio.strokes = []; studio.score = null; return render(); }
   if (t.id === 'sClear') { studio.strokes.length = 0; studio.score = null; return render(); }
-  if (t.id === 'sCheck') { if (!studio.strokes.length) return toast('Write the letter first.'); shapeScore(studio.c, studio.strokes, !studio.guide).then(s => { studio.score = s; render(); }); return; }
+  if (t.id === 'sCheck') { if (!studio.strokes.length) return toast('Write the letter first.'); (studio.guide ? shapeScore(studio.c, studio.strokes, false).then(sc => ({ score: sc, ok: sc >= PASS.trace })) : recognize(studio.c, studio.strokes, LETTERS.filter(x => !x.old).map(x => x.c)).then(r => ({ score: r.score, best: r.best, ok: r.rank <= 3 && r.score >= PASS.write }))).then(r => { studio.score = r.score; studio.best = r.best; studio.ok = r.ok; render(); }); return; }
   if (d.ex) { dText = d.ex; return render(); }
   if (t.id === 'dGo') { dText = document.getElementById('dIn').value; return render(); }
   if (t.id === 'flash') { fc.flip = !fc.flip; t.classList.toggle('flipped', fc.flip); return; }
-  if (d.rate) { fc.i++; fc.flip = false; return render(); }
+  if (d.rate) { const c = fc.deck[fc.i % fc.deck.length]; seeLetter(c, d.rate !== 'again'); if (d.rate === 'again') fc.deck.splice(Math.min(fc.deck.length, fc.i + 3), 0, c); save(); fc.i++; fc.flip = false; return render(); }
   if (d.bill) { billing = d.bill; return render(); }
   if (d.buy) { co = { item: d.buy, method: 'card', step: 'form' }; return openSheet('checkout'); }
-  if (t.id === 'sReset') { if (d.armed) { resetAll(); openStage = null; toast('Progress reset. Back to the first lesson.'); return go('map'); } d.armed = '1'; t.textContent = 'Tap again to reset'; return; }
+  if (t.id === 'sReset') { if (d.armed) { const keep = { entered: S.entered, noticeSeen: true, profile: S.profile, rom: S.rom, sound: S.sound }; resetAll(keep); openPhase = null; fc.deck = []; toast('Progress reset. Back to the first lesson.'); return go('map'); } d.armed = '1'; t.textContent = 'Tap again to reset'; return; }
 });
 document.addEventListener('change', e => {
   const t = e.target;
@@ -468,7 +655,12 @@ document.addEventListener('change', e => {
   if (t.id === 'hwFile') document.getElementById('hwFileName').textContent = t.files[0] ? t.files[0].name : 'JPG, PNG, M4A or MP3';
 });
 document.addEventListener('submit', e => {
-  if (e.target.id !== 'hwForm') return; e.preventDefault();
+  const id = e.target.id;
+  if (id === 'aForm') { e.preventDefault(); return authSubmit(auth.mode === 'signup' ? 'signup' : 'signin'); }
+  if (id === 'aReset') { e.preventDefault(); return authSubmit('reset'); }
+  if (id === 'aNewPass') { e.preventDefault(); return authSubmit('newpass'); }
+  if (id === 'oForm') { e.preventDefault(); return onboardSubmit(e.target); }
+  if (id !== 'hwForm') return; e.preventDefault();
   const title = document.getElementById('hwTitle').value.trim(), txt = document.getElementById('hwText').value.trim(), file = document.getElementById('hwFile').files[0];
   const human = document.getElementById('hwHuman').checked, err = document.getElementById('hwErr');
   if (!title) return err.textContent = 'Give your homework a short name.';
@@ -486,9 +678,17 @@ document.addEventListener('keydown', e => {
 window.addEventListener('pagehide', () => { if (rec.url) URL.revokeObjectURL(rec.url); });
 
 /* ---------- start ---------- */
-const h0 = location.hash.slice(1);
-route = ROUTES.includes(h0) && h0 !== 'play' ? h0 : 'map';
-render();
+(async () => {
+  let r = null;
+  if (Auth.configured()) { try { r = await Auth.handleRedirect(); } catch (e) { r = { error: e.message }; } }
+  if (r?.recovery) { S.entered = S.entered || 'account'; auth = { mode: 'newpass', busy: false, err: '', msg: '' }; route = 'auth'; render(); return; }
+  if (r?.error) { auth.err = r.error; route = 'auth'; render(); return; }
+  if (r?.signedIn) { S.entered = 'account'; save(); }
+  await Promise.all([Auth.resume(), Auth.loadProviders()]);
+  const h0 = location.hash.slice(1);
+  route = gateRoute(ROUTES.includes(h0) && h0 !== 'play' ? h0 : 'map');
+  render();
+})();
 if ('speechSynthesis' in window) speechSynthesis.getVoices();
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !location.hostname.endsWith('claude.ai') && !location.hostname.includes('claudeusercontent')) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

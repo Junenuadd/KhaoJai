@@ -49,7 +49,7 @@ export async function shapeScore(c, strokes, normalize) {
   const mk = () => { const cv = document.createElement('canvas'); cv.width = cv.height = N; return cv.getContext('2d', { willReadFrequently: true }); };
   const g = mk(), gd = mk(), u = mk();
   const box = drawGlyph(g, c, N, 'fill', '#000');
-  gd.lineWidth = 10; gd.strokeStyle = '#000'; gd.lineJoin = 'round'; drawGlyph(gd, c, N, 'fill', '#000'); drawGlyph(gd, c, N, 'stroke');
+  gd.lineWidth = 5; gd.strokeStyle = '#000'; gd.lineJoin = 'round'; drawGlyph(gd, c, N, 'fill', '#000'); drawGlyph(gd, c, N, 'stroke');
   let pts = strokes.map(s => s.map(([x, y]) => [x * k, y * k]));
   const flat = pts.flat();
   if (!flat.length) return 0;
@@ -73,5 +73,65 @@ export async function shapeScore(c, strokes, normalize) {
   if (up < 20 || gl === 0) return 0;
   // the user's line is thinner than the letter's filled area, so coverage is scaled up a little
   const coverage = Math.min(1, (cov / gl) * 1.6), precision = prec / up;
-  return Math.round(100 * (0.5 * coverage + 0.5 * precision));
+  // scribbling or filling the box puts far more ink down than the letter has — that lowers the score
+  const excess = up > gl * 1.5 ? (gl * 1.5) / up : 1;
+  return Math.round(100 * (0.5 * coverage + 0.5 * precision) * excess);
+}
+
+// Free-hand writing check. The drawing and each letter are scaled into the same box and compared with a
+// "chamfer distance" (how far each line is from the nearest line of the other shape, both ways).
+// The writing counts only if the target letter is among the closest matches of all the letters,
+// so scribbling or filling the box does not pass. Still approximate: stroke order is not checked.
+const M = 48, PAD = 4;
+function cropTo(srcCanvas, x0, y0, x1, y1, width) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = M;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(srcCanvas, x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0), PAD, PAD, M - 2 * PAD, M - 2 * PAD);
+  const d = ctx.getImageData(0, 0, M, M).data, mask = new Uint8Array(M * M);
+  for (let i = 0; i < M * M; i++) mask[i] = d[i * 4 + 3] > 60 ? 1 : 0;
+  return mask;
+}
+function inkBox(ctx, n) {
+  const d = ctx.getImageData(0, 0, n, n).data; let x0 = n, y0 = n, x1 = 0, y1 = 0;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (d[(y * n + x) * 4 + 3] > 60) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  return x1 >= x0 ? [x0, y0, x1 + 1, y1 + 1] : null;
+}
+function distMap(mask) {   // two-pass chamfer distance transform (3-4 weights)
+  const INF = 1e6, d = new Float32Array(M * M);
+  for (let i = 0; i < M * M; i++) d[i] = mask[i] ? 0 : INF;
+  for (let y = 0; y < M; y++) for (let x = 0; x < M; x++) { const i = y * M + x; let v = d[i];
+    if (x > 0) v = Math.min(v, d[i - 1] + 3); if (y > 0) { v = Math.min(v, d[i - M] + 3); if (x > 0) v = Math.min(v, d[i - M - 1] + 4); if (x < M - 1) v = Math.min(v, d[i - M + 1] + 4); } d[i] = v; }
+  for (let y = M - 1; y >= 0; y--) for (let x = M - 1; x >= 0; x--) { const i = y * M + x; let v = d[i];
+    if (x < M - 1) v = Math.min(v, d[i + 1] + 3); if (y < M - 1) { v = Math.min(v, d[i + M] + 3); if (x < M - 1) v = Math.min(v, d[i + M + 1] + 4); if (x > 0) v = Math.min(v, d[i + M - 1] + 4); } d[i] = v; }
+  return d;
+}
+const glyphCache = {};
+function glyphShape(c) {
+  if (glyphCache[c]) return glyphCache[c];
+  const n = 200, cv = document.createElement('canvas'); cv.width = cv.height = n;
+  const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.font = `120px ${FONT}`; ctx.fillStyle = '#000'; ctx.textBaseline = 'middle'; ctx.fillText(c, 30, 100);
+  const b = inkBox(ctx, n); const mask = cropTo(cv, ...b);
+  return (glyphCache[c] = { mask, dist: distMap(mask) });
+}
+function userShape(strokes) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = SIZE;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  strokes.forEach(s => { ctx.beginPath(); s.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); if (s.length === 1) ctx.lineTo(s[0][0] + .1, s[0][1]); ctx.stroke(); });
+  const b = inkBox(ctx, SIZE); if (!b) return null;
+  const mask = cropTo(cv, ...b); return { mask, dist: distMap(mask) };
+}
+function chamfer(a, b) {
+  let s1 = 0, n1 = 0, s2 = 0, n2 = 0;
+  for (let i = 0; i < M * M; i++) { if (a.mask[i]) { s1 += b.dist[i]; n1++; } if (b.mask[i]) { s2 += a.dist[i]; n2++; } }
+  return (s1 / Math.max(1, n1) + s2 / Math.max(1, n2)) / 2 / 3;   // in pixels of the 48px box
+}
+export async function recognize(target, strokes, candidates) {
+  await fontReady(candidates.join(''));
+  const u = userShape(strokes); if (!u) return { score: 0, rank: 99, best: [] };
+  const res = candidates.map(c => [c, chamfer(u, glyphShape(c))]).sort((a, b) => a[1] - b[1]);
+  const rank = res.findIndex(([c]) => c === target) + 1, dist = res[rank - 1][1];
+  const score = Math.max(0, Math.min(100, Math.round(100 - dist * 18)));   // 0 px apart = 100, ~5.5 px = 0
+  return { score, rank, best: res.slice(0, 3).map(([c]) => c) };
 }

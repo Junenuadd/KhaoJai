@@ -1,60 +1,91 @@
-# KhaoJai Thai Foundation — curriculum and rules
+# KhaoJai curriculum — v0.5 "Reading Foundations"
 
-KhaoJai teaches Thai from the very beginning. Learners follow **one ordered path**. Each stage unlocks only after the previous one is passed. Conversation, chat, slang and culture ("Real-life Thai") open only after the foundation is passed.
+**Core idea:** teach learners to *read* Thai first, then meaning, sentences, grammar and real-life communication.
+The most important result is not how many lessons a learner finishes, but whether they can recognise Thai characters, combine them, and read Thai **without depending on romanization**.
 
-Content lives in `src/data/letters.js` (alphabet data) and `src/data/curriculum.js` (stages and lessons). Pass marks live in `src/config.js`.
+Content lives in `src/data/letters.js` (consonants, English-letter helpers, vowels) and `src/data/curriculum.js` (phases, lessons, tests). Pass marks live in `src/config.js`.
 
-## The path
-| Stage | Goal | Lessons |
+## The learner journey
+1. **Sign in / create an account** (email + password, password reset; Google once it is switched on) — or **continue as a guest** (progress on this device only). See `docs/AUTH_SETUP.md`.
+2. **"Welcome to KhaoJai!" notice** — explains the reading-first approach. It can be reopened from the dashboard and from Me.
+3. **Seven onboarding questions** — prior study, letters, reading, listening, main reason, skills wanted, minutes per day. The minutes set the daily goal.
+4. **Placement check (optional)** — offered only to learners who say they know some Thai. About 28 questions; lessons where every placement question is right are marked *passed (placement)*. It is a starting-point check, not a proficiency certificate (no CEFR claims).
+5. **Dashboard** → lessons.
+
+## Phases
+| Phase | Status | Content |
 |---|---|---|
-| **1 · Recognize Thai letters** | Recognize all 44 consonants and say their names (กอ ไก่) | L1–L7: the alphabet in 7 groups, in order ก→ฮ · L8 look-alike letters · L9 alphabet order |
-| **2 · Learn the sounds** | Connect letters to sounds | S1 no-puff vs. puff (g/k, dt/t, bp/p, j/ch) · S2 same sound, different letters (ส ศ ษ ซ …) · S3 sounds new to English (ง ป ต ร อ) · S4 hear the letter · S5 end sounds · S6 recite ก–ฮ out loud (record & compare) |
-| **3 · Read Thai** | Read syllables and words, then work out tones | R1 long vowels · R2 short and special vowels · R3 first words · R4 words with end sounds · R5 consonant classes · R6 the five tones and tone marks · R7 tone rules · R8 silent ห and clusters · R9 reading without romanization |
-| **4 · Write Thai** | Write every consonant and spell words | W1 how Thai is written · W2–W5 trace and write all 44 letters by class · W6 write from sound · W7 spell words |
-| **5 · Foundation check** | Prove each skill separately | T1 recognition · T2 listening · T3 reading (no romanization) · T4 writing (spelling + handwriting) |
-| After the foundation | Real-life Thai | Hello Line, Café Line, Chat Line (from v0.3, kept) |
+| **1 · Reading Foundations** | built | 44 consonants, all vowels, combining, end sounds, reading without romanization |
+| **2 · Reading Rules** | built | consonant classes, live/dead syllables, five tones & tone marks, tone rules, leading ห & clusters, silent letters ์ |
+| 3 · Vocabulary & Meaning | planned | — |
+| 4 · Sentences & Grammar | planned | — |
+| 5 · Listening, Speaking & Real-life Thai | early preview | Hello / Café / Chat lines from v0.3 (unlocks after Phase 2) |
+| Writing track (optional) | built | trace and write all 44 letters, write from sound, spell words — runs alongside Phase 1, not required for Phase 2 |
 
-Tones come in Stage 3, after letters, sounds and vowels, as the requirements ask.
+### Phase 1 order
+Consonants and vowels are interleaved so learners start reading early.
+
+| # | Lesson | Tests |
+|---|---|---|
+| C1 | Consonants ก–ฆ | shapes · names · sounds |
+| C2 | Consonants ง–ฌ | shapes · names · sounds |
+| V1 | First vowels อา อี อู ออ + first syllables | vowels · combining |
+| C3 | Consonants ญ–ฒ | shapes · names · sounds |
+| C4 | Consonants ณ–ธ | shapes · names · sounds |
+| V2 | Short vowels อะ อิ อุ (short vs long) | vowels · combining |
+| X1 | Review 1 (mixed) | everything so far |
+| C5 | Consonants น–พ | |
+| C6 | Consonants ฟ–ล | |
+| V3 | Vowels before the consonant เอ แอ โอ (+ short เอะ แอะ โอะ) | |
+| C7 | Consonants ว–ฮ | |
+| X2 | Review 2: all 44 consonants | |
+| C8 | Look-alike letters | shapes · names |
+| C9 | English letters with two Thai letters (K → ก/ค, T → ต/ท, P → ป/พ, J/CH, R/L) and same-sound letters (ส ศ ษ ซ) | similar sounds · sounds |
+| V4 | อึ อือ เออ เอาะ (+ short เออะ) | |
+| V5 | Vowels with several parts เอีย เอือ อัว | |
+| V6 | Special vowels ไอ ใอ เอา อำ ฤ | |
+| X3 | Review 3: all vowels | |
+| R1 | Read new syllables (made from any consonant + vowel) | combining |
+| R2 | End sounds (8 final sounds, ั in closed syllables) | end sounds · reading |
+| R3 | Read on your own (romanization hidden) | reading |
+| F1–F4 | **Phase checks**: consonants · sounds · vowels · reading | each skill on its own |
+
+Phase 2 unlocks only when every Phase 1 lesson **and** all four phase checks are passed.
+
+## English-letter helpers
+Every consonant has a familiar English letter as a **memory aid** (e.g. K → ก, T → ต and ท, L → ล, S → ส), plus a short tip explaining where the English sound is different. The app always labels these as "a memory aid only — not an exact sound". C9 then teaches where one English letter maps to two Thai letters and how to hear the difference. Technical phonetics (IPA, "puff of air") is introduced only where it explains a real distinction.
 
 ## Every lesson works the same way
-1. **Intro** — what you'll learn and how the lesson works
-2. **Learn** — one card per letter or vowel: the letter, its name, romanization, the picture word, the start and end sounds with an English comparison and its limits, its class, and audio
-3. **Understand** — concept cards with examples (for example, why ส ศ ษ sound the same)
-4. **Practice** — choose, listen, match, spell, trace and write
-5. **Review** — every wrong answer is explained and comes back at the end of the lesson (up to twice)
-6. **Check** — the last part of each lesson is marked "Check"
-7. **Result** — the score, the pass mark, the letters to practise, and one next step: "Next lesson" if passed, "Practise again" if not
+1. **Learn** — letter or vowel cards: Thai name (ก ไก่), romanization, English helper, picture cue, sound, audio (normal and slow).
+2. **Listen / Recognize / Practice** — find the letter, hear and choose, match, read syllables. Practice mistakes come back later in the lesson (up to twice).
+3. **Recall** — see a letter, remember its name, then reveal the answer (feeds spaced repetition).
+4. **Read** — with romanization shown or hidden; the learner can always toggle it, but reading tests hide it.
+5. **Test** — the end-of-lesson assessment. New random questions every attempt. **Only first-try answers in the test count.**
+6. **Result** — overall score, pass mark, a bar for each skill tested, and the letters to practise.
+7. **Review** — if not passed: *Practise what I missed* (re-teaches only the missed items and asks about them again), then *Retake the test*.
+8. **Progress** — the next lesson unlocks only after a pass.
 
-## Status and unlocking
-- Lesson status: **Not started → In progress → Needs more practice / Completed**. Tests show **Passed**.
-- The score counts **first-try answers only**. Opening a lesson or clicking through it never completes it.
-- Inside a stage, each lesson unlocks when the previous one is completed. The four Stage 5 tests can be taken in any order.
-- A stage is passed when all its lessons are completed. The next stage unlocks at that point.
-- Locked items always say what to finish first.
-- Completed lessons can be replayed at any time.
-- Testing helper: Me → Settings → "Unlock everything (testing)".
+## Passing (`src/config.js`)
+- Lesson test: **80%** overall **and at least 60% in each skill** that had 2+ questions — so a learner who knows letter shapes but not their sounds does not pass.
+- Reviews: 80%. Phase checks: consonants 85%, sounds 80%, vowels 80%, reading 80%, reading rules 80%.
+- Tracing: 60% overlap with the guide letter.
+- Free-hand writing: the drawing is compared with **all** letters; it passes only if the target letter is among the 3 closest matches and its match score is at least 80.
+The reasons for every number are written in `src/config.js`.
 
-## Pass marks (`src/config.js`)
-- Lesson 80%
-- Recognition 85%
-- Listening 80%
-- Reading 80%
-- Writing 75%
-- Trace 60% shape match
-- Write from memory 50% shape match
+## What the dashboard shows
+- Current phase and next lesson, with one **Continue learning** button (it becomes **Review & retake** if the next lesson needs review).
+- Counts kept separate: lessons **viewed**, **practice done**, **tests passed**, **skills strong**, **skills to review**.
+- **Skills** — Recognize consonant shapes · Know consonant names · Match sounds to letters · Hear similar sounds apart · Recognize vowels · Combine consonant + vowel · Read end sounds · Read without romanization (+ tones, writing when tested). Each shows Strong (85%+) / Developing (60–84%) / Needs review (<60%) / Not tested yet, based on the **most recent test** of each lesson — not on lessons opened.
+- A **recommended practice** for the weakest skill, a **Needs review** list with practise/retake buttons, recent test results, and items due for review.
+- Lesson statuses: Not started · Viewed · Practice done · Needs review · Passed (or Passed · placement). Locked lessons say what to pass first.
 
-The reasons for each number are written in the config file.
-
-## Letter memory
-Each letter has a Leitner box (0–5). A right answer moves it up a box and a wrong answer moves it down two. Reviews come back after 0/1/2/4/8/16 days.
-
-The Practice tab collects:
-- **Letter review** — the letters that are due
-- **Trouble letters** — the letters missed most often
+## Practice tab
+Review what's due (spaced repetition for letters and vowels: boxes 0–5, reviews after 0/1/2/4/8/16 days), trouble letters, practise any single skill, Thai time & money, and randomized letter flashcards that put missed letters first.
 
 ## Honest limits (also shown in the app)
-- **Audio** uses the device's Thai text-to-speech voice. Some devices have no Thai voice. Recordings by native speakers are planned.
-- **Handwriting check** compares the overall shape (overlap) and gives an approximate score. It does **not** check stroke order or direction. Animated stroke-order demos for each letter are not built yet. The app teaches the general rule instead: start at the head (loop) and write in one stroke where possible.
-- **Recite & record**: the recording stays in the browser tab and is never uploaded. There is no automatic pronunciation scoring; the learner compares by ear.
-- **Alphabet song or video**: the sing-along reads every letter name with karaoke highlighting. A recorded song or video is not included yet; it must be original or properly licensed.
+- **Audio** uses the device's Thai text-to-speech voice. Some devices have no Thai voice. Native-speaker recordings are planned.
+- **Handwriting** checks are approximate shape comparisons. They do not check stroke order or direction, and the free-hand check has been calibrated on typeset letters, not yet on many real learners. No animated stroke-order demos yet.
+- **Recite & record** keeps the recording in the browser tab only (never uploaded or saved to the account). There is no automatic pronunciation score.
+- **Alphabet song/video**: the karaoke sing-along uses the device voice; a recorded song or video is not included yet (must be original or licensed).
 - **Picture cues** are placeholder emoji until KhaoJai's own illustrations exist.
+- The placement check and phase checks are KhaoJai's own checks, not a validated proficiency framework.
