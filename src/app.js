@@ -137,13 +137,13 @@ function vAuth() {
         <label class="rc agree"><input type="checkbox" id="aAgree"><span class="dot"></span><span class="small">I agree to KhaoJai's terms and privacy policy (early preview).</span></label>
         ${submit('Create account', 'Creating your account…')}</form>`; break;
     case 'verify': body = `<form class="stack" id="aVerify" novalidate>${backBtn(auth.vkind === 'signup' ? 'signup1' : 'signin')}${auth.vkind === 'signup' ? stepBar(3) : ''}
-        <div class="center vhead"><span class="mailic" aria-hidden="true">✉️</span><h2>Check your email</h2><p class="small muted">We sent a 6-digit code to<br><b>${esc(dr.email || '')}</b></p></div>
+        <div class="center vhead"><span class="mailic" aria-hidden="true">✉️</span><h2>Check your email</h2><p class="small muted">We sent an email to <b>${esc(dr.email || '')}</b>.<br>Tap the button in it on this device — or type the 6-digit code if the email shows one.</p></div>
         ${otpBoxes()}
         ${submit(auth.vkind === 'signup' ? 'Verify & finish' : 'Sign in', 'Checking the code…')}
         <p class="small center muted" id="resendRow">${auth.cool > 0 ? `You can ask for a new code in <b id="coolN">${auth.cool}</b>s` : `Didn't get it? Check spam, or <button class="linkbtn" type="button" id="aResend">send a new code</button>`}</p>
         <p class="small center"><button class="linkbtn" type="button" data-amode="${auth.vkind === 'signup' ? 'signup1' : 'signincode'}">Use a different email</button></p></form>`; break;
     case 'signincode': body = `<form class="stack" id="aCode" novalidate>${backBtn('signin')}
-        <div><h2>Sign in with a code</h2><p class="small muted">No password needed — we'll email you a 6-digit code.</p></div>
+        <div><h2>Sign in with a code</h2><p class="small muted">No password needed — we'll email you a sign-in link or code.</p></div>
         <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}"></div>
         ${submit('Email me a code', 'Sending…')}</form>`; break;
     case 'reset': body = `<form class="stack" id="aReset" novalidate>${backBtn('signin')}<div><h2>Reset your password</h2><p class="small muted">We'll email you a link to choose a new password.</p></div>
