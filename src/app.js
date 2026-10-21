@@ -56,7 +56,9 @@ const level = pct => pct === null || pct === undefined ? ['Not tested yet', ''] 
 const bar = (pct, cls = '') => `<div class="bar ${cls}"><i style="width:${Math.max(pct ? 2 : 0, pct || 0)}%"></i></div>`;
 
 /* ---------- routing ---------- */
+const SKIP_LOGIN = true;   // login screen paused while testing lessons — learners start as guests; Sign in is still in Me
 function gateRoute(r) {
+  if (!S.entered && SKIP_LOGIN && r !== 'auth') { S.entered = 'guest'; save(); }
   if (!S.entered) return 'auth';
   if (!S.noticeSeen && r !== 'auth') return 'notice';
   if (!S.profile && !['auth', 'notice'].includes(r)) return 'onboard';
