@@ -17,10 +17,10 @@ export const syncState = { status: 'idle', at: 0, error: '' };   // idle | savin
 const here = () => location.origin + location.pathname;
 
 // Which sign-in methods the project has switched on (read from Supabase, so the app never shows a dead button).
-export const providers = { google: false, loaded: false };
+export const providers = { google: false, apple: false, facebook: false, loaded: false };
 export async function loadProviders() {
   if (!configured()) return;
-  try { const s = await api('/auth/v1/settings'); providers.google = !!s?.external?.google; } catch (e) {}
+  try { const s = await api('/auth/v1/settings'); for (const k of ['google', 'apple', 'facebook']) providers[k] = !!s?.external?.[k]; } catch (e) {}
   providers.loaded = true;
 }
 
@@ -32,7 +32,9 @@ function friendly(msg = '', code = '') {
   if (/email not confirmed|email_not_confirmed/.test(m)) return 'Please confirm your email first — open the link we sent you, then sign in.';
   if (/password should be|weak_password/.test(m)) return 'Please choose a stronger password: at least 8 characters.';
   if (/rate limit|over_email_send_rate_limit|too many/.test(m)) return 'Too many tries in a short time. Please wait a minute and try again.';
-  if (/provider is not enabled|unsupported provider/.test(m)) return 'Google sign-in is not switched on yet. Please use email for now.';
+  if (/provider is not enabled|unsupported provider/.test(m)) return 'That sign-in option is not switched on yet. Please use email for now.';
+  if (/otp_expired|token has expired|invalid.*token|otp.*invalid/.test(m)) return 'That code is wrong or has expired. Check it, or ask for a new one.';
+  if (/signups not allowed for otp|otp_disabled|user not found/.test(m)) return 'We couldn\'t find an account with that email. Create an account first.';
   if (/invalid email|email_address_invalid/.test(m)) return 'That email address doesn\'t look right.';
   if (/failed to fetch|network/.test(m)) return 'Can\'t reach the server. Check your internet connection and try again.';
   return msg || 'Something went wrong. Please try again.';
@@ -49,8 +51,9 @@ async function api(path, { method = 'GET', body, token, headers = {} } = {}) {
 }
 const withExpiry = d => ({ ...d, expires_at: d.expires_at || Math.floor(Date.now() / 1000) + (d.expires_in || 3600) });
 
-export async function signUp(email, password) {
-  const d = await api('/auth/v1/signup?redirect_to=' + encodeURIComponent(here()), { method: 'POST', body: { email, password } });
+export async function signUp(email, password, meta = {}) {
+  const data = {}; if (meta.name) data.name = meta.name; if (meta.phone) data.phone = meta.phone;   // phone is saved with the profile, not verified (SMS codes need a paid SMS service)
+  const d = await api('/auth/v1/signup?redirect_to=' + encodeURIComponent(here()), { method: 'POST', body: { email, password, data } });
   if (d?.access_token) { keep(withExpiry(d)); await afterSignIn(); return { signedIn: true }; }
   return { confirm: true };   // email confirmation is required by the project
 }
@@ -58,8 +61,20 @@ export async function signIn(email, password) {
   const d = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } });
   keep(withExpiry(d)); await afterSignIn(); return true;
 }
-export function signInGoogle() {
-  location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(here())}`;
+// 6-digit email codes (OTP). Needs {{ .Token }} in the Supabase email templates — see docs/AUTH_SETUP.md.
+export async function sendLoginCode(email) {
+  await api('/auth/v1/otp', { method: 'POST', body: { email, create_user: false } });
+}
+export async function resendSignup(email) {
+  await api('/auth/v1/resend', { method: 'POST', body: { type: 'signup', email } });
+}
+export async function verifyCode(email, token, kind = 'email') {
+  const d = await api('/auth/v1/verify', { method: 'POST', body: { type: kind === 'signup' ? 'signup' : 'email', email, token } });
+  if (!d?.access_token) throw new Error('That code didn\'t work. Please try again.');
+  keep(withExpiry(d)); await afterSignIn(); return true;
+}
+export function signInOAuth(provider) {
+  location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=${encodeURIComponent(provider)}&redirect_to=${encodeURIComponent(here())}`;
 }
 export async function sendReset(email) {
   await api('/auth/v1/recover?redirect_to=' + encodeURIComponent(here()), { method: 'POST', body: { email } });

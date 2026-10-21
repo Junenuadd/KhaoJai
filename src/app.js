@@ -18,7 +18,7 @@ const NAV = [['map', 'Learn', 'map'], ['letters', 'ก–ฮ', 'abc'], ['practic
 let route = 'map', billing = 'monthly', dText = DECODE_EXAMPLES[0];
 let openPhase = null, lettersTab = 'chart', studio = { c: 'ก', guide: true, strokes: [], score: null };
 let fc = { deck: [], i: 0, flip: false };
-let auth = { mode: 'signin', busy: false, err: '', msg: '' };
+let auth = { mode: 'welcome', busy: false, err: '', msg: '', draft: {} };
 let onb = null;
 const isLetter = c => !!L[c];
 
@@ -95,52 +95,129 @@ function topbar() {
 }
 
 /* ---------- 1. Sign in / sign up ---------- */
+// Sign-in / sign-up screens. Sign-up is three short steps: details → password → 6-digit email code.
+const CC = [['+66', 'TH'], ['+1', 'US/CA'], ['+44', 'UK'], ['+61', 'AU'], ['+49', 'DE'], ['+33', 'FR'], ['+81', 'JP'], ['+82', 'KR'], ['+86', 'CN'], ['+65', 'SG'], ['+60', 'MY'], ['+63', 'PH'], ['+91', 'IN'], ['+31', 'NL'], ['+46', 'SE'], ['+7', 'RU'], ['+971', 'AE']];
+const heroArt = (small) => `<div class="hart ${small ? 'sm' : ''}" aria-hidden="true">
+  <span class="spk s1">✦</span><span class="spk s2">✦</span><span class="spk s3">•</span>
+  <span class="blk b1" lang="th">ก</span><span class="blk b2" lang="th">ข</span><span class="blk b3" lang="th">ค</span>
+  <span class="hjai">${jai(small ? 70 : 104, 'cheer', '#fff', 'bob')}</span>
+  <span class="hbub" lang="th">อ่านได้!</span></div>`;
+const authShell = (side, inner) => `<div class="authbg"><div class="apanel">${side}</div><div class="asheet">${inner}</div></div>`;
+const sideBrand = (small) => `${heroArt(small)}<div class="abrand"><h1 class="aword">Khao<b>Jai</b></h1><p class="atag">Read Thai from your very first letter</p></div>`;
+const stepBar = n => `<div class="steps3" aria-label="Step ${n} of 3">${[1, 2, 3].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}<span>Step ${n} of 3</span></div>`;
+const backBtn = to => `<button type="button" class="aback" data-amode="${to}" aria-label="Back">←</button>`;
+const otpBoxes = () => `<div class="otp" id="otp">${[0, 1, 2, 3, 4, 5].map(i => `<input class="otpbox" inputmode="numeric" autocomplete="${i ? 'off' : 'one-time-code'}" maxlength="1" aria-label="Digit ${i + 1}" data-otp="${i}">`).join('')}</div>`;
+
 function vAuth() {
-  const on = Auth.configured();
-  const head = `<div class="gatehead">${jai(84, 'happy', '#C9B6FF', 'bob')}<div><h1>Welcome to Khao<b class="brand">Jai</b></h1><p class="muted">Learn to read Thai — from your very first letter.</p></div></div>`;
-  if (!on) return `${head}
-    <section class="card stack c-lemon-l"><h2>Accounts are not switched on yet</h2>
-      <p>Sign-up and sign-in will open soon. Until then you can learn as a guest: your progress is saved <b>on this device only</b> and is not linked to an account.</p>
-      <button class="btn big block" id="aGuest">Start as a guest</button></section>`;
-  if (auth.mode === 'newpass') return `${head}<form class="card stack" id="aNewPass" novalidate><h2>Choose a new password</h2>
-      <div class="field"><label for="aPw">New password</label><input id="aPw" class="input" type="password" autocomplete="new-password" minlength="8" required></div>
-      ${authMsgs()}<button class="btn big block" type="submit" ${auth.busy ? 'disabled' : ''}>${auth.busy ? 'Saving…' : 'Save new password'}</button></form>`;
-  if (auth.mode === 'reset') return `${head}<form class="card stack" id="aReset" novalidate><h2>Reset your password</h2><p class="small muted">We'll email you a link to choose a new password.</p>
-      <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" required></div>
-      ${authMsgs()}<button class="btn big block" type="submit" ${auth.busy ? 'disabled' : ''}>${auth.busy ? 'Sending…' : 'Send reset link'}</button>
-      <button class="linkbtn" type="button" data-amode="signin">Back to sign in</button></form>`;
-  const up = auth.mode === 'signup';
-  return `${head}
-    <div class="seg wide" role="tablist"><button role="tab" data-amode="signin" aria-pressed="${!up}">Sign in</button><button role="tab" data-amode="signup" aria-pressed="${up}">Create account</button></div>
-    <form class="card stack" id="aForm" novalidate>
-      ${Auth.providers.google ? `<button class="btn line block" type="button" id="aGoogle">${googleG()} Continue with Google</button><p class="small muted center">or with email</p>` : ''}
-      <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" required></div>
-      <div class="field"><label for="aPw">Password${up ? ' (at least 8 characters)' : ''}</label><input id="aPw" class="input" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" minlength="${up ? 8 : 1}" required></div>
-      ${authMsgs()}
-      <button class="btn big block" type="submit" ${auth.busy ? 'disabled' : ''}>${auth.busy ? (up ? 'Creating account…' : 'Signing in…') : (up ? 'Create account' : 'Sign in')}</button>
-      ${up ? '' : '<button class="linkbtn" type="button" data-amode="reset">Forgot your password?</button>'}
-    </form>
-    <section class="card stack c-lav-l"><p><b>Just want to try it?</b> Learn as a guest — progress stays on this device. You can create an account later and keep it.</p><button class="btn line" id="aGuest">Continue as a guest</button></section>`;
+  const on = Auth.configured(), dr = auth.draft || (auth.draft = {});
+  if (!on) return authShell(sideBrand(), `<section class="stack"><h2>Accounts are not switched on yet</h2><p>You can learn as a guest: your progress is saved <b>on this device only</b>.</p><button class="btn big block" id="aGuest">Start as a guest</button></section>`);
+  if (auth.mode === 'welcome') return `<div class="welcome">
+    <div class="wtop">${heroArt(false)}<h1 class="aword big">Khao<b>Jai</b></h1><p class="atag">Read Thai from your very first letter. Short lessons, real tests, no Thai needed to start.</p></div>
+    <div class="wbtm stack">
+      <div class="wfeat"><span><b lang="th">ก–ฮ</b>44 letters</span><span><b>5 min</b>a day</span><span><b>Free</b>to start</span></div>
+      <button class="btn big block yel" data-amode="signup1">Get started — it's free</button>
+      <button class="btn big block line" data-amode="signin">I already have an account</button>
+      <button class="linkbtn center" id="aGuest">Just looking? Try it as a guest</button></div></div>`;
+  const tiles = up => `<div class="socrow">${SOCIAL.map(([k, label, svg]) => { const ok = Auth.providers[k]; return `<button type="button" class="soc" ${ok ? `data-oauth="${k}"` : 'disabled'} aria-label="${up ? 'Sign up' : 'Sign in'} with ${label}${ok ? '' : ' (coming soon)'}">${svg}<span>${label}</span>${ok ? '' : '<em>soon</em>'}</button>`; }).join('')}</div><div class="ordiv"><span>or with email</span></div>`;
+  const submit = (label, busy) => `${authMsgs()}<button class="btn big block" type="submit" ${auth.busy ? 'disabled' : ''}>${auth.busy ? busy : label}</button>`;
+  const pwField = (up) => `<div class="field"><label for="aPw">${up ? 'Create a password' : 'Password'}</label><div class="pwwrap"><input id="aPw" class="input" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" required><button type="button" class="pweye" id="aEye" aria-label="Show password">Show</button></div></div>`;
+  let body;
+  switch (auth.mode) {
+    case 'signup1': body = `<form class="stack" id="aSignup1" novalidate>${backBtn('welcome')}${stepBar(1)}
+        <div><h2>Create your account</h2><p class="small muted">Your progress is saved to it, on every device.</p></div>${tiles(true)}
+        <div class="field"><label for="aName">Your name</label><input id="aName" class="input" autocomplete="name" maxlength="40" value="${esc(dr.name || '')}" placeholder="What should Jai call you?"></div>
+        <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}" placeholder="you@example.com"></div>
+        <div class="field"><label for="aPhone">Mobile number <span class="muted">(optional)</span></label><div class="phonerow"><select id="aCC" class="input" aria-label="Country code">${CC.map(([c, n]) => `<option value="${c}" ${(dr.cc || '+66') === c ? 'selected' : ''}>${n} ${c}</option>`).join('')}</select><input id="aPhone" class="input" type="tel" inputmode="tel" autocomplete="tel-national" value="${esc(dr.phone || '')}" placeholder="81 234 5678"></div><p class="small muted">For account help and lesson reminders later. We never share it.</p></div>
+        ${submit('Continue', 'Checking…')}
+        <p class="small center">Already have an account? <button class="linkbtn" type="button" data-amode="signin">Sign in</button></p></form>`; break;
+    case 'signup2': body = `<form class="stack" id="aSignup2" novalidate>${backBtn('signup1')}${stepBar(2)}
+        <div><h2>Choose a password</h2><p class="small muted">For <b>${esc(dr.email || '')}</b></p></div>
+        ${pwField(true)}
+        <ul class="pwrules" id="pwRules"><li data-r="len">At least 8 characters</li><li data-r="mix">Letters and numbers</li></ul>
+        <label class="rc agree"><input type="checkbox" id="aAgree"><span class="dot"></span><span class="small">I agree to KhaoJai's terms and privacy policy (early preview).</span></label>
+        ${submit('Create account', 'Creating your account…')}</form>`; break;
+    case 'verify': body = `<form class="stack" id="aVerify" novalidate>${backBtn(auth.vkind === 'signup' ? 'signup1' : 'signin')}${auth.vkind === 'signup' ? stepBar(3) : ''}
+        <div class="center vhead"><span class="mailic" aria-hidden="true">✉️</span><h2>Check your email</h2><p class="small muted">We sent a 6-digit code to<br><b>${esc(dr.email || '')}</b></p></div>
+        ${otpBoxes()}
+        ${submit(auth.vkind === 'signup' ? 'Verify & finish' : 'Sign in', 'Checking the code…')}
+        <p class="small center muted" id="resendRow">${auth.cool > 0 ? `You can ask for a new code in <b id="coolN">${auth.cool}</b>s` : `Didn't get it? Check spam, or <button class="linkbtn" type="button" id="aResend">send a new code</button>`}</p>
+        <p class="small center"><button class="linkbtn" type="button" data-amode="${auth.vkind === 'signup' ? 'signup1' : 'signincode'}">Use a different email</button></p></form>`; break;
+    case 'signincode': body = `<form class="stack" id="aCode" novalidate>${backBtn('signin')}
+        <div><h2>Sign in with a code</h2><p class="small muted">No password needed — we'll email you a 6-digit code.</p></div>
+        <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}"></div>
+        ${submit('Email me a code', 'Sending…')}</form>`; break;
+    case 'reset': body = `<form class="stack" id="aReset" novalidate>${backBtn('signin')}<div><h2>Reset your password</h2><p class="small muted">We'll email you a link to choose a new password.</p></div>
+        <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}"></div>
+        ${submit('Send reset link', 'Sending…')}</form>`; break;
+    case 'newpass': body = `<form class="stack" id="aNewPass" novalidate><div><h2>Choose a new password</h2></div>${pwField(true)}
+        <ul class="pwrules" id="pwRules"><li data-r="len">At least 8 characters</li><li data-r="mix">Letters and numbers</li></ul>${submit('Save new password', 'Saving…')}</form>`; break;
+    default: body = `<form class="stack" id="aForm" novalidate>${backBtn('welcome')}
+        <div><h2>Welcome back!</h2><p class="small muted">Sign in to keep learning.</p></div>${tiles(false)}
+        <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}"></div>
+        ${pwField(false)}
+        <div class="row between"><button class="linkbtn" type="button" data-amode="signincode">Email me a code instead</button><button class="linkbtn" type="button" data-amode="reset">Forgot password?</button></div>
+        ${submit('Sign in', 'Signing in…')}
+        <p class="small center">New to KhaoJai? <button class="linkbtn" type="button" data-amode="signup1">Create an account</button></p></form>`;
+  }
+  return authShell(sideBrand(true), `${body}<button class="linkbtn center guestlink" id="aGuest">Continue as a guest</button>`);
 }
+const SOCIAL = [
+  ['google', 'Google', '<svg width="24" height="24" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>'],
+  ['apple', 'Apple', '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path fill="#111" d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8s1.9.8 3.2.8c1.3 0 2.1-1.2 2.9-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.4-1-2.4-3.9zM14 5.5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>'],
+  ['facebook', 'Facebook', '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#1877F2"/><path fill="#fff" d="M13.4 22.9v-7.6h2.5l.4-3h-2.9v-1.9c0-.9.3-1.5 1.5-1.5h1.5V6.2c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8v2.2H8v3h2.5v7.6z"/></svg>']
+];
 const authMsgs = () => `${auth.err ? `<p class="err" role="alert">${esc(auth.err)}</p>` : ''}${auth.msg ? `<p class="okmsg" role="status">${esc(auth.msg)}</p>` : ''}`;
-const googleG = () => '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
-async function authSubmit(kind) {
-  const email = document.getElementById('aEmail')?.value.trim(), pw = document.getElementById('aPw')?.value || '';
-  auth.err = ''; auth.msg = '';
-  if (kind !== 'newpass' && !/^\S+@\S+\.\S+$/.test(email || '')) { auth.err = 'Please enter a valid email address.'; return render(); }
-  if ((kind === 'signup' || kind === 'newpass') && pw.length < 8) { auth.err = 'Please choose a password with at least 8 characters.'; return render(); }
-  if (kind === 'signin' && !pw) { auth.err = 'Please enter your password.'; return render(); }
-  auth.busy = true; render();
+const val = id => document.getElementById(id)?.value.trim() || '';
+const emailOk = e => /^\S+@\S+\.\S+$/.test(e);
+const pwOk = p => p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
+function setMode(mode, keepMsg) { auth = { ...auth, mode, busy: false, err: '', msg: keepMsg ? auth.msg : '' }; render(); setTimeout(() => document.querySelector('.asheet input:not([type=checkbox]), .otpbox')?.focus(), 30); }
+let coolTimer = null;
+function startCool(sec = 60) {
+  auth.cool = sec; clearInterval(coolTimer);
+  coolTimer = setInterval(() => { auth.cool--; const n = document.getElementById('coolN'); if (auth.cool <= 0) { clearInterval(coolTimer); if (route === 'auth' && auth.mode === 'verify') { const keep = otpValue(); render(); fillOtp(keep); } } else if (n) n.textContent = auth.cool; }, 1000);
+}
+const otpValue = () => [...document.querySelectorAll('.otpbox')].map(i => i.value).join('');
+const fillOtp = s => document.querySelectorAll('.otpbox').forEach((b, i) => { b.value = s[i] || ''; });
+async function authStep(kind) {
+  const dr = auth.draft; auth.err = ''; auth.msg = '';
+  const fail = m => { auth.err = m; auth.busy = false; render(); };
+  if (kind === 'signup1') {
+    Object.assign(dr, { name: val('aName'), email: val('aEmail'), cc: val('aCC'), phone: val('aPhone').replace(/[^\d]/g, '').replace(/^0/, '') });
+    if (!dr.name) return fail('Please tell us your name.');
+    if (!emailOk(dr.email)) return fail('Please enter a valid email address.');
+    if (dr.phone && !/^\d{6,12}$/.test(dr.phone)) return fail('That mobile number doesn\'t look right. Leave it empty if you prefer.');
+    return setMode('signup2');
+  }
+  const pw = document.getElementById('aPw')?.value || '';
+  if ((kind === 'signup2' || kind === 'newpass') && !pwOk(pw)) return fail('Your password needs at least 8 characters, with letters and numbers.');
+  if (kind === 'signup2' && !document.getElementById('aAgree')?.checked) return fail('Please tick the box to agree to the terms.');
+  if (['signin', 'signincode', 'reset'].includes(kind)) { dr.email = val('aEmail'); if (!emailOk(dr.email)) return fail('Please enter a valid email address.'); }
+  if (kind === 'signin' && !pw) return fail('Please enter your password.');
+  const code = kind === 'verify' ? otpValue() : '';
+  if (kind === 'verify' && !/^\d{6}$/.test(code)) return fail('Please enter all 6 digits of the code.');
+  auth.busy = true; render(); if (kind === 'verify') fillOtp(code);
   try {
-    if (kind === 'signin') { await Auth.signIn(email, pw); return enterApp(); }
-    if (kind === 'signup') { const r = await Auth.signUp(email, pw); if (r.signedIn) return enterApp(); auth.msg = `Almost done! We sent a confirmation link to ${email}. Open it on this device to finish signing up.`; auth.mode = 'signin'; }
-    if (kind === 'reset') { await Auth.sendReset(email); auth.msg = 'If an account exists for that email, a reset link is on its way. Check your inbox (and spam).'; }
-    if (kind === 'newpass') { await Auth.setNewPassword(pw); toast('Password updated.'); auth.mode = 'signin'; return enterApp(); }
+    if (kind === 'signin') { await Auth.signIn(dr.email, pw); return enterApp(); }
+    if (kind === 'signup2') {
+      const r = await Auth.signUp(dr.email, pw, { name: dr.name, phone: dr.phone ? dr.cc + dr.phone : '' });
+      if (r.signedIn) return enterApp();
+      auth.vkind = 'signup'; startCool(); return setMode('verify');
+    }
+    if (kind === 'signincode') { await Auth.sendLoginCode(dr.email); auth.vkind = 'email'; startCool(); return setMode('verify'); }
+    if (kind === 'verify') { await Auth.verifyCode(dr.email, code, auth.vkind); toast(auth.vkind === 'signup' ? `Welcome to KhaoJai, ${dr.name || 'friend'}! 🎉` : 'Signed in.'); return enterApp(); }
+    if (kind === 'reset') { await Auth.sendReset(dr.email); auth.msg = 'If an account exists for that email, a reset link is on its way. Check your inbox (and spam).'; }
+    if (kind === 'newpass') { await Auth.setNewPassword(pw); toast('Password updated.'); return enterApp(); }
   } catch (e) { auth.err = e.message; }
-  auth.busy = false; render();
+  auth.busy = false; render(); if (kind === 'verify') fillOtp(code);
+}
+async function resendCode() {
+  const dr = auth.draft; auth.err = ''; auth.msg = '';
+  try { auth.vkind === 'signup' ? await Auth.resendSignup(dr.email) : await Auth.sendLoginCode(dr.email); auth.msg = 'A new code is on its way.'; startCool(); }
+  catch (e) { auth.err = e.message; }
+  render();
 }
 function enterApp() {
-  auth = { mode: 'signin', busy: false, err: '', msg: '' };
+  auth = { mode: 'signin', busy: false, err: '', msg: '', draft: {} };
   if (!S.entered) S.entered = Auth.signedIn() ? 'account' : 'guest';
   save(); go('map');
 }
@@ -601,15 +678,17 @@ document.addEventListener('click', e => {
   if (d.p) return playerAction(t, render);
   if (d.close !== undefined) return closeSheet();
   if (d.sheet) return openSheet(d.sheet);
-  if (d.amode) { auth = { mode: d.amode, busy: false, err: '', msg: auth.msg && d.amode === 'signin' ? auth.msg : '' }; return render(); }
+  if (d.amode) return setMode(d.amode);
+  if (t.id === 'aResend') return resendCode();
   if (t.id === 'aGuest') { S.entered = 'guest'; save(); return go('map'); }
-  if (t.id === 'aGoogle') { auth.busy = true; render(); return Auth.signInGoogle(); }
+  if (d.oauth) { auth.busy = true; return Auth.signInOAuth(d.oauth); }
+  if (t.id === 'aEye') { const pw = document.getElementById('aPw'); const show = pw.type === 'password'; pw.type = show ? 'text' : 'password'; t.textContent = show ? 'Hide' : 'Show'; t.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); return; }
   if (t.id === 'nStart') { S.noticeSeen = true; save(); return go('map'); }
   if (t.id === 'oPlace') { S.placed = true; save(); return startPlacement(); }
   if (t.id === 'oSkip') { onb = null; return go('map'); }
   if (t.id === 'mOnb') { onb = null; S.profile = null; return go('onboard'); }
   if (t.id === 'mPlace') return startPlacement();
-  if (t.id === 'mSignIn') { S.entered = ''; auth = { mode: 'signin', busy: false, err: '', msg: '' }; return go('auth'); }
+  if (t.id === 'mSignIn') { S.entered = ''; auth = { mode: 'signin', busy: false, err: '', msg: '', draft: {} }; return go('auth'); }
   if (t.id === 'mOut') { Auth.signOut().then(() => { resetAll(); toast('Signed out. Your progress is safe in your account.'); go('auth'); }); return; }
   if (d.continue) { return lessonState(d.continue) === 'needs_review' ? remedial(d.continue) : openLesson(d.continue); }
   if (d.lesson) return openLesson(d.lesson);
@@ -656,9 +735,8 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('submit', e => {
   const id = e.target.id;
-  if (id === 'aForm') { e.preventDefault(); return authSubmit(auth.mode === 'signup' ? 'signup' : 'signin'); }
-  if (id === 'aReset') { e.preventDefault(); return authSubmit('reset'); }
-  if (id === 'aNewPass') { e.preventDefault(); return authSubmit('newpass'); }
+  const AF = { aForm: 'signin', aSignup1: 'signup1', aSignup2: 'signup2', aVerify: 'verify', aCode: 'signincode', aReset: 'reset', aNewPass: 'newpass' };
+  if (AF[id]) { e.preventDefault(); return authStep(AF[id]); }
   if (id === 'oForm') { e.preventDefault(); return onboardSubmit(e.target); }
   if (id !== 'hwForm') return; e.preventDefault();
   const title = document.getElementById('hwTitle').value.trim(), txt = document.getElementById('hwText').value.trim(), file = document.getElementById('hwFile').files[0];
@@ -670,7 +748,18 @@ document.addEventListener('submit', e => {
   S.homework.unshift({ title, status: human ? 'queue' : 'ai', date: new Date().toLocaleDateString('en-GB'), note: human ? 'In the queue for a Thai reviewer.' : 'AI checking is coming soon. Your homework is saved on this device.' });
   save(); toast(human ? 'Sent to the review queue.' : 'Saved.'); render();
 });
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.otp !== undefined) {
+    const digits = t.value.replace(/\D/g, ''); const boxes = [...document.querySelectorAll('.otpbox')]; let i = +t.dataset.otp;
+    if (digits.length > 1) { digits.split('').slice(0, 6 - i).forEach((d, k) => { boxes[i + k].value = d; }); i = Math.min(5, i + digits.length - 1); } else t.value = digits;
+    if (digits && boxes[i + 1]) boxes[i + 1].focus(); else if (digits) boxes[i].blur();
+    if (otpValue().length === 6 && !auth.busy) authStep('verify');
+  }
+  if (t.id === 'aPw') document.querySelectorAll('#pwRules li').forEach(li => li.classList.toggle('ok', li.dataset.r === 'len' ? t.value.length >= 8 : /[A-Za-z]/.test(t.value) && /\d/.test(t.value)));
+});
 document.addEventListener('keydown', e => {
+  if (e.target.dataset?.otp !== undefined && e.key === 'Backspace' && !e.target.value) { const p = document.querySelector(`[data-otp="${+e.target.dataset.otp - 1}"]`); if (p) { p.value = ''; p.focus(); } return; }
   if (e.key === 'Escape' && sheet) return closeSheet();
   if (route === 'play') return playerKey(e, render);
   if (e.key === 'Enter' && e.target.id === 'dIn' && (e.metaKey || e.ctrlKey)) { dText = e.target.value; render(); }
@@ -681,7 +770,7 @@ window.addEventListener('pagehide', () => { if (rec.url) URL.revokeObjectURL(rec
 (async () => {
   let r = null;
   if (Auth.configured()) { try { r = await Auth.handleRedirect(); } catch (e) { r = { error: e.message }; } }
-  if (r?.recovery) { S.entered = S.entered || 'account'; auth = { mode: 'newpass', busy: false, err: '', msg: '' }; route = 'auth'; render(); return; }
+  if (r?.recovery) { S.entered = S.entered || 'account'; auth = { mode: 'newpass', busy: false, err: '', msg: '', draft: {} }; route = 'auth'; render(); return; }
   if (r?.error) { auth.err = r.error; route = 'auth'; render(); return; }
   if (r?.signedIn) { S.entered = 'account'; save(); }
   await Promise.all([Auth.resume(), Auth.loadProviders()]);

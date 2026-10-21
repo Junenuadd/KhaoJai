@@ -52,3 +52,22 @@ grant select, insert, update on public.progress to authenticated;
 
 ## Turning accounts off
 Empty `SUPABASE_URL` and `SUPABASE_ANON_KEY` in `src/config.js`. The app then runs in guest mode and says plainly that accounts are not switched on.
+
+## 6-digit email codes (v0.5.1)
+Sign-up is three steps: name, email and optional mobile number → password → a 6-digit code sent by email.
+Signing in can also use a code instead of a password ("Email me a code instead").
+
+For the code to appear in the emails, edit **Supabase → Authentication → Emails (templates)**:
+- **Confirm signup**: add `Your KhaoJai code: {{ .Token }}` to the message.
+- **Magic Link**: add `Your KhaoJai sign-in code: {{ .Token }}`.
+
+Supabase's built-in email sender is only for testing (very few emails per hour, and it may only deliver to the project's team members).
+Before real learners sign up, connect your own email sender under **Authentication → SMTP Settings** (for example Resend, created with KhaoJai's own email).
+
+## Mobile numbers
+The mobile number is optional and saved with the account profile (`user_metadata.phone`). It is **not** verified.
+Verifying phone numbers by SMS needs a paid SMS provider (Twilio, Vonage, MessageBird) connected in **Authentication → Providers → Phone**.
+
+## More sign-in options
+Google, Apple and Facebook buttons show "soon" until the provider is switched on in **Authentication → Providers**; then they work without code changes.
+Apple needs a paid Apple Developer account.
