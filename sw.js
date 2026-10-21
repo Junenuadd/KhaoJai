@@ -1,6 +1,6 @@
 // Service worker: makes KhaoJai installable and usable on a weak connection.
 // Bump VERSION whenever app files change so phones pick up the new version.
-const VERSION = 'khaojai-v0.5.1';
+const VERSION = 'khaojai-v0.5.2';
 const CORE = [
   './', './index.html', './manifest.webmanifest',
   './src/styles.css', './src/app.js', './src/ui.js', './src/store.js', './src/player.js', './src/checkout.js', './src/draw.js', './src/config.js', './src/auth.js',
@@ -21,7 +21,8 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   if (url.origin === location.origin) {
-    e.respondWith(fetch(e.request).then(r => { const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); return r; })
+    const req = e.request.mode === 'navigate' ? e.request : new Request(e.request, { cache: 'no-cache' });   // always check for a newer file
+    e.respondWith(fetch(req).then(r => { const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); return r; })
       .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html'))));
   } else if (/fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) {
     e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => { const copy = res.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); return res; })));
