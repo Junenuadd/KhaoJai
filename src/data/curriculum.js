@@ -10,6 +10,7 @@
 //
 // Step types: intro · card (letter) · vcard (vowel) · info · recall · choose · listen · match · build · tone · trace · write
 import { LETTERS, L, nameOf, SOUNDS, FINALS, LOOKALIKES, SAME_SOUND, VOWELS, vowelSet, CLASS_INFO } from './letters.js';
+import { ASSOC, ASSOC_READY } from './associations.js';
 import { PASS } from '../config.js';
 
 /* ---------- skills ---------- */
@@ -23,7 +24,8 @@ export const SKILLS = {
   final:   { label: 'Read end sounds', short: 'End sounds' },
   read:    { label: 'Read without romanization', short: 'Reading' },
   tone:    { label: 'Work out tones', short: 'Tones' },
-  write:   { label: 'Write letters (approximate check)', short: 'Writing' }
+  write:   { label: 'Write letters (approximate check)', short: 'Writing' },
+  assoc:   { label: 'Link English letters to Thai letters', short: 'English links' }
 };
 export const PHASE1_SKILLS = ['shape', 'name', 'sound', 'discrim', 'vowel', 'combo', 'final', 'read'];
 
@@ -433,10 +435,44 @@ function spellLesson() {
    THE PATH
    ========================================================= */
 const L_ = (id, title, th, def, extra = {}) => ({ id, title, th, ...def, ...extra });
+
+/* ---------- C0: English letters → Thai letters (content in data/associations.js) ---------- */
+function assocLesson() {
+  const G = ASSOC.filter(g => g.status === 'reviewed');
+  const engOf = c => G.find(g => g.thai.includes(c))?.eng;
+  const allThai = G.flatMap(g => g.thai);
+  const engs = G.map(g => g.eng);
+  const qThai2Eng = (c, test) => T({ t: 'choose', skill: 'assoc', key: c, q: 'Which English letter helps you remember this Thai letter?', show: c,
+    ...opts(engOf(c), engs, asText), why: `${c} "${nameOf(c)}" (${L[c].rom}) — memory aid: ${engOf(c)}.` }, test);
+  const qEng2Thai = (g, test) => { const c = g.thai[Math.floor(Math.random() * g.thai.length)];
+    return T({ t: 'choose', skill: 'assoc', key: c, big: true, q: `Which Thai letter can English "${g.eng}" help you remember?`,
+      ...opts(c, [...allThai.filter(x => !g.thai.includes(x)), ...(g.compare ? [g.compare] : [])], asChar), why: `"${g.eng}" → ${g.thai.join(' ')}. ${g.note}` }, test); };
+  const qHear = (c, test) => T({ t: 'listen', skill: 'assoc', key: c, say: nameOf(c), sayRom: L[c].rom,
+    ...opts(engOf(c), engs, asText), why: `You heard "${nameOf(c)}" — ${c}, memory aid ${engOf(c)}.` }, test);
+  return {
+    skills: ['assoc'],
+    teach: () => {
+      const steps = [intro(['English letters you already know can help you remember Thai letters', 'Each Thai letter\'s name and sound', 'Where the real Thai sound is different'],
+        ['Look at each group and listen', 'Practise matching both ways', TEST_HOW()])];
+      G.forEach(g => steps.push({ t: 'info', score: false, title: `${g.eng} → ${g.thai.join('  ')}`,
+        text: `${g.note} Start of a word: "${g.start}"${g.end ? ` · at the end: "${g.end}"` : ''}. A memory aid only — always listen to the Thai sound.`,
+        rows: [...g.thai, ...(g.compare ? [g.compare] : [])].map(c => [c, `${nameOf(c)} · ${L[c].rom}`, g.compare === c ? `Compare: this is not "${g.eng}"` : '']) }));
+      shuffle(allThai).forEach(c => steps.push(qThai2Eng(c)));
+      shuffle(G).forEach(g => steps.push(qEng2Thai(g)));
+      pick(allThai, Math.min(4, allThai.length)).forEach(c => steps.push(qHear(c)));
+      return steps;
+    },
+    test: () => shuffle([...allThai.map(c => qThai2Eng(c, true)), ...G.map(g => qEng2Thai(g, true)), ...pick(allThai, Math.min(3, allThai.length)).map(c => qHear(c, true))]),
+    place: () => pick(allThai, 2).map(c => qThai2Eng(c, true))
+  };
+}
+const ASSOC_ON = ASSOC_READY && ASSOC.filter(g => g.status === 'reviewed').length >= 2;
+
 export const PHASES = [
   { n: 1, id: 'p1', title: 'Reading Foundations', th: 'พื้นฐานการอ่าน', color: 'lav',
     can: 'Recognize all 44 consonants and the vowels, combine them, and read simple Thai without romanization',
     lessons: [
+      ...(ASSOC_ON ? [L_('C0', 'English letters → Thai letters', 'K → ก · T → ต ท · S → ส', assocLesson())] : []),
       L_('C1', 'Consonants ก–ฆ', 'ก ข ฃ ค ฅ ฆ', consonantLesson(0)),
       L_('C2', 'Consonants ง–ฌ', 'ง จ ฉ ช ซ ฌ', consonantLesson(1)),
       L_('V1', 'First vowels: อา อี อู ออ', 'กา  ดี  งู  ขอ', vowelLesson(1, 1, POSITIONS_INFO)),

@@ -56,13 +56,15 @@ const level = pct => pct === null || pct === undefined ? ['Not tested yet', ''] 
 const bar = (pct, cls = '') => `<div class="bar ${cls}"><i style="width:${Math.max(pct ? 2 : 0, pct || 0)}%"></i></div>`;
 
 /* ---------- routing ---------- */
-const SKIP_LOGIN = true;   // login screen paused while testing lessons — learners start as guests; Sign in is still in Me
+// Flow: Welcome → Sign in / Sign up → Learning notice → Questionnaire (+ optional placement) → Dashboard.
+// Everything after the welcome/sign-in screens needs a signed-in account. The notice and questionnaire
+// answers are saved to the account, so returning learners go straight to their dashboard.
+// (Only if accounts are not configured at all — local development — does the app fall back to a device-only guest.)
 function gateRoute(r) {
-  if (!S.entered && SKIP_LOGIN && r !== 'auth') { S.entered = 'guest'; save(); }
-  if (!S.entered) return 'auth';
-  if (!S.noticeSeen && r !== 'auth') return 'notice';
-  if (!S.profile && !['auth', 'notice'].includes(r)) return 'onboard';
-  return r;
+  if (Auth.configured() ? !Auth.signedIn() : !S.entered) return 'auth';
+  if (!S.noticeSeen) return 'notice';
+  if (!S.profile) return 'onboard';
+  return r === 'auth' ? 'map' : r;
 }
 function go(r, sub) {
   if (!ROUTES.includes(r) || (r === 'play' && !P)) r = 'map';
@@ -117,9 +119,8 @@ function vAuth() {
     <div class="wtop">${heroArt(false)}<h1 class="aword big">Khao<b>Jai</b></h1><p class="atag">Read Thai from your very first letter. Short lessons, real tests, no Thai needed to start.</p></div>
     <div class="wbtm stack">
       <div class="wfeat"><span><b lang="th">ก–ฮ</b>44 letters</span><span><b>5 min</b>a day</span><span><b>Free</b>to start</span></div>
-      <button class="btn big block yel" data-amode="signup1">Get started — it's free</button>
-      <button class="btn big block line" data-amode="signin">I already have an account</button>
-      <button class="linkbtn center" id="aGuest">Just looking? Try it as a guest</button></div></div>`;
+      <button class="btn big block yel" data-amode="signup1">Start learning — create a free account</button>
+      <button class="btn big block line" data-amode="signin">Log in</button></div></div>`;
   const tiles = up => `<div class="socrow">${SOCIAL.map(([k, label, svg]) => { const ok = Auth.providers[k]; return `<button type="button" class="soc" ${ok ? `data-oauth="${k}"` : 'disabled'} aria-label="${up ? 'Sign up' : 'Sign in'} with ${label}${ok ? '' : ' (coming soon)'}">${svg}<span>${label}</span>${ok ? '' : '<em>soon</em>'}</button>`; }).join('')}</div><div class="ordiv"><span>or with email</span></div>`;
   const submit = (label, busy) => `${authMsgs()}<button class="btn big block" type="submit" ${auth.busy ? 'disabled' : ''}>${auth.busy ? busy : label}</button>`;
   const pwField = (up) => `<div class="field"><label for="aPw">${up ? 'Create a password' : 'Password'}</label><div class="pwwrap"><input id="aPw" class="input" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" required><button type="button" class="pweye" id="aEye" aria-label="Show password">Show</button></div></div>`;
@@ -161,7 +162,7 @@ function vAuth() {
         ${submit('Sign in', 'Signing in…')}
         <p class="small center">New to KhaoJai? <button class="linkbtn" type="button" data-amode="signup1">Create an account</button></p></form>`;
   }
-  return authShell(sideBrand(true), `${body}<button class="linkbtn center guestlink" id="aGuest">Continue as a guest</button>`);
+  return authShell(sideBrand(true), body);
 }
 const SOCIAL = [
   ['google', 'Google', '<svg width="24" height="24" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>'],
@@ -285,7 +286,7 @@ function vMap() {
   const all = Object.values(S.lessons);
   const counts = { viewed: all.filter(l => l.viewed).length, practiced: all.filter(l => l.practiced).length, passed: all.filter(l => l.status === 'passed').length };
   const sk = skillSummary();
-  const shown = [...PHASE1_SKILLS, ...(sk.tone ? ['tone'] : []), ...(sk.write ? ['write'] : [])];
+  const shown = [...(sk.assoc ? ['assoc'] : []), ...PHASE1_SKILLS, ...(sk.tone ? ['tone'] : []), ...(sk.write ? ['write'] : [])];
   const strong = shown.filter(k => sk[k]?.pct >= LEVEL.strong), weak = shown.filter(k => sk[k]?.pct !== null && sk[k]?.pct !== undefined && sk[k].pct < LEVEL.developing);
   const tested = shown.filter(k => sk[k]?.t).sort((a, b) => sk[a].pct - sk[b].pct);
   const rec = tested.find(k => sk[k].pct < LEVEL.strong);
@@ -582,7 +583,7 @@ function vMe() {
     ${row('phone', 'Install on your phone or computer', 'iPhone, Android, Windows, Mac', '<button class="btn line" data-sheet="install">How</button>')}
     ${row('trash', 'Reset progress', acct ? 'Start again from the first lesson (also resets your account\'s progress)' : 'Start again from the first lesson', '<button class="btn line" id="sReset">Reset</button>')}
   </section>
-  <p class="small muted center">KhaoJai early preview · v0.5 · Reading Foundations</p>`;
+  <p class="small muted center">KhaoJai early preview · v0.6 · Reading Foundations</p>`;
 }
 
 /* ---------- Homework & Plans (unchanged features) ---------- */
@@ -691,7 +692,7 @@ document.addEventListener('click', e => {
   if (t.id === 'mOnb') { onb = null; S.profile = null; return go('onboard'); }
   if (t.id === 'mPlace') return startPlacement();
   if (t.id === 'mSignIn') { S.entered = ''; auth = { mode: 'signin', busy: false, err: '', msg: '', draft: {} }; return go('auth'); }
-  if (t.id === 'mOut') { Auth.signOut().then(() => { resetAll(); toast('Signed out. Your progress is safe in your account.'); go('auth'); }); return; }
+  if (t.id === 'mOut') { Auth.signOut().then(() => { resetAll(); openPhase = null; fc.deck = []; auth = { mode: 'welcome', busy: false, err: '', msg: '', draft: {} }; toast('Signed out. Your progress is safe in your account.'); go('auth'); }); return; }
   if (d.continue) { return lessonState(d.continue) === 'needs_review' ? remedial(d.continue) : openLesson(d.continue); }
   if (d.lesson) return openLesson(d.lesson);
   if (d.remedial) return remedial(d.remedial);

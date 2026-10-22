@@ -1,10 +1,10 @@
 // Service worker: makes KhaoJai installable and usable on a weak connection.
 // Bump VERSION whenever app files change so phones pick up the new version.
-const VERSION = 'khaojai-v0.5.2';
+const VERSION = 'khaojai-v0.6.0';
 const CORE = [
   './', './index.html', './manifest.webmanifest',
   './src/styles.css', './src/app.js', './src/ui.js', './src/store.js', './src/player.js', './src/checkout.js', './src/draw.js', './src/config.js', './src/auth.js',
-  './src/data/letters.js', './src/data/curriculum.js', './src/data/beyond.js', './src/data/decoder.js',
+  './src/data/letters.js', './src/data/curriculum.js', './src/data/beyond.js', './src/data/decoder.js', './src/data/associations.js', './src/data/audio.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'
 ];
 

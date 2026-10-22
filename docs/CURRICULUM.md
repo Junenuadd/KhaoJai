@@ -6,11 +6,17 @@ The most important result is not how many lessons a learner finishes, but whethe
 Content lives in `src/data/letters.js` (consonants, English-letter helpers, vowels) and `src/data/curriculum.js` (phases, lessons, tests). Pass marks live in `src/config.js`.
 
 ## The learner journey
-1. **Sign in / create an account** (email + password, password reset; Google once it is switched on) — or **continue as a guest** (progress on this device only). See `docs/AUTH_SETUP.md`.
+1. **Welcome page** → **Sign up / Log in** (email + password with email confirmation, password reset; Google when switched on). An account is required: the notice, the questionnaire, the dashboard and lessons are only shown to signed-in learners.
 2. **"Welcome to KhaoJai!" notice** — explains the reading-first approach. It can be reopened from the dashboard and from Me.
-3. **Seven onboarding questions** — prior study, letters, reading, listening, main reason, skills wanted, minutes per day. The minutes set the daily goal.
-4. **Placement check (optional)** — offered only to learners who say they know some Thai. About 28 questions; lessons where every placement question is right are marked *passed (placement)*. It is a starting-point check, not a proficiency certificate (no CEFR claims).
+3. **Seven onboarding questions** — prior study, letters, reading, listening, main reason, skills wanted, minutes per day. Saved to the account, so returning learners go straight to their dashboard.
+4. **Placement check (optional)** — offered only to learners who say they know some Thai. Lessons where every placement question is right are marked *passed (placement)*. A starting-point check, not a proficiency certificate.
 5. **Dashboard** → lessons.
+
+## Lesson C0 — English letters → Thai letters
+Built from `src/data/associations.js` (content prepared by the KhaoJai team). Each group lists an English letter, the Thai letters it helps learners remember, the start and end sounds, and a note on how the real Thai sound differs. The lesson stays hidden until `ASSOC_READY = true` and groups are marked `reviewed`; then it appears before C1 with practice and a test (skill: "Link English letters to Thai letters").
+
+## Audio
+The device's Thai voice is used for now. Recorded audio replaces it per item: add files under `audio/` and list them in `src/data/audio.js` (Thai text → file). No lesson changes are needed.
 
 ## Phases
 | Phase | Status | Content |

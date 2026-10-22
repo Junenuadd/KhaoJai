@@ -1,4 +1,5 @@
 // Shared UI helpers: icons, the Jai mascot, toast, speech.
+import { RECORDINGS } from './data/audio.js';
 import { S } from './store.js';
 
 const ICONS = {
@@ -66,8 +67,16 @@ export function toast(msg) {
 }
 
 let warned = false;
+let clip = null;
 export function say(text, rate = 0.85) {
   if (!S.sound) return toast('Sound is off. Turn it on in Me → Settings.');
+  const rec = RECORDINGS[String(text).trim()];
+  if (rec) {   // a native-speaker recording exists — play it instead of the device voice
+    try { window.speechSynthesis?.cancel(); clip?.pause(); clip = new Audio(rec); clip.playbackRate = rate < 0.7 ? 0.75 : 1; clip.play().catch(() => sayTTS(text, rate)); return; } catch (e) {}
+  }
+  sayTTS(text, rate);
+}
+function sayTTS(text, rate) {
   try {
     const synth = window.speechSynthesis; if (!synth) throw 0;
     const u = new SpeechSynthesisUtterance(text); u.lang = 'th-TH'; u.rate = rate;

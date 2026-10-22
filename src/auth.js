@@ -83,6 +83,7 @@ export async function setNewPassword(password) {
   await api('/auth/v1/user', { method: 'PUT', token: await token(), body: { password } });
 }
 export async function signOut() {
+  if (pending) { try { await push(true); } catch (e) {} }   // save anything not yet sent before signing out
   try { if (session) await api('/auth/v1/logout', { method: 'POST', token: session.access_token }); } catch (e) { /* the local sign-out still happens */ }
   keep(null);
 }
@@ -117,7 +118,7 @@ export async function handleRedirect() {
 async function afterSignIn() {
   const remote = await pull();
   if (remote && remote.data && Object.keys(remote.data).length) replaceAll({ ...remote.data, entered: 'account' });
-  else { S.entered = 'account'; await push(true); }
+  else { replaceAll({ rom: S.rom, sound: S.sound, entered: 'account' }); await push(true); }   // a new account starts its own notice + questionnaire
 }
 async function pull() {
   const uid = user()?.id; if (!uid) return null;
@@ -137,9 +138,11 @@ export async function push(now) {
     } catch (e) { Object.assign(syncState, { status: navigator.onLine === false ? 'offline' : 'error', error: e.message }); }
     notify();
   };
-  if (now) return run();
-  timer = setTimeout(run, 1500);
+  if (now) { pending = false; return run(); }
+  pending = true; timer = setTimeout(() => { pending = false; run(); }, 1500);
 }
+let pending = false;
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && pending) push(true); });
 onSave(() => push());
 window.addEventListener('online', () => push(true));
 

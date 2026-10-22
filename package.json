@@ -1,6 +1,6 @@
 {
   "name": "khaojai",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "description": "KhaoJai (เข้าใจ) — learn Thai the way Thai people really talk. Installable web app (PWA), no build step.",
