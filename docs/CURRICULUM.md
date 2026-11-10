@@ -1,4 +1,4 @@
-# KhaoJai curriculum — v0.5 "Reading Foundations"
+# KhaoJai curriculum — v0.7 "Phases 1–8 complete (draft content)"
 
 **Core idea:** teach learners to *read* Thai first, then meaning, sentences, grammar and real-life communication.
 The most important result is not how many lessons a learner finishes, but whether they can recognise Thai characters, combine them, and read Thai **without depending on romanization**.
@@ -13,50 +13,36 @@ Content lives in `src/data/letters.js` (consonants, English-letter helpers, vowe
 5. **Dashboard** → lessons.
 
 ## Lesson C0 — English letters → Thai letters
-Built from `src/data/associations.js` (content prepared by the KhaoJai team). Each group lists an English letter, the Thai letters it helps learners remember, the start and end sounds, and a note on how the real Thai sound differs. The lesson stays hidden until `ASSOC_READY = true` and groups are marked `reviewed`; then it appears before C1 with practice and a test (skill: "Link English letters to Thai letters").
+Built from `src/data/associations.js` (content prepared by the KhaoJai team). Each group lists an English letter, the Thai letters it helps learners remember, the start and end sounds, and a note on how the real Thai sound differs. v0.7: a full first draft (21 groups) is switched on (`ASSOC_READY = true`). ฃ and ฅ are shown as old letters and left out of questions. จูน: check and edit the groups freely — the lesson rebuilds itself.
 
 ## Audio
 The device's Thai voice is used for now. Recorded audio replaces it per item: add files under `audio/` and list them in `src/data/audio.js` (Thai text → file). No lesson changes are needed.
 
-## Phases
-| Phase | Status | Content |
-|---|---|---|
-| **1 · Reading Foundations** | built | 44 consonants, all vowels, combining, end sounds, reading without romanization |
-| **2 · Reading Rules** | built | consonant classes, live/dead syllables, five tones & tone marks, tone rules, leading ห & clusters, silent letters ์ |
-| 3 · Vocabulary & Meaning | planned | — |
-| 4 · Sentences & Grammar | planned | — |
-| 5 · Listening, Speaking & Real-life Thai | early preview | Hello / Café / Chat lines from v0.3 (unlocks after Phase 2) |
-| Writing track (optional) | built | trace and write all 44 letters, write from sound, spell words — runs alongside Phase 1, not required for Phase 2 |
+## Phases (v0.7 — 78 lessons, 91 words)
+Each phase opens when the previous phase's checkpoint test is passed.
 
-### Phase 1 order
-Consonants and vowels are interleaved so learners start reading early.
+| Phase | Lessons | Content | Data file |
+|---|---|---|---|
+| **1 · Reading Foundations** | C0, C1–C9, V1–V6, X1–X3, R1–R3 … (26) | 44 consonants, vowels, combining, end sounds, reading without romanization | `letters.js`, `associations.js` |
+| **2 · Reading Rules** | F1–F4, G1–G7 (7+) | classes, live/dead syllables, tones & tone marks, leading ห, clusters, ์ | `letters.js` |
+| **3 · Vocabulary & Meaning** | T1–T8 + P3 | greetings, numbers, time, food, shopping, travel, family, feelings — word cards, meaning, listening, spelling | `vocab.js` |
+| **4 · Sentences & Grammar** | S1–S6 + P4 | word order, ไม่/ไหม, past/future with time words, classifiers, questions, polite particles — build sentences with tiles | `courses.js` (GRAMMAR) |
+| **5 · Listening & Speaking** | L1–L6 + P5 | real-life stations (hello, café, market, taxi) + listening/shadowing | `beyond.js`, `vocab.js` |
+| **6 · Real Thai & Culture** | K1–K4 + P6 | money & time, wai & politeness, nicknames & pronouns, everyday situations | `beyond.js`, `courses.js` (CULTURE) |
+| **7 · Chat & Slang** | H1–H4 + P7 | chat lines, texting (555, นะ, จ้า), casual slang with a register label | `beyond.js`, `courses.js` (CHAT) |
+| **8 · Practical Thai** | Z1–Z4 + FINAL | signs, menus, forms, messages — then the **final assessment** (pass 80%) → certificate | `courses.js` (PRACTICAL) |
+| Writing track (optional) | W | trace and write all 44 letters | `letters.js` |
 
-| # | Lesson | Tests |
-|---|---|---|
-| C1 | Consonants ก–ฆ | shapes · names · sounds |
-| C2 | Consonants ง–ฌ | shapes · names · sounds |
-| V1 | First vowels อา อี อู ออ + first syllables | vowels · combining |
-| C3 | Consonants ญ–ฒ | shapes · names · sounds |
-| C4 | Consonants ณ–ธ | shapes · names · sounds |
-| V2 | Short vowels อะ อิ อุ (short vs long) | vowels · combining |
-| X1 | Review 1 (mixed) | everything so far |
-| C5 | Consonants น–พ | |
-| C6 | Consonants ฟ–ล | |
-| V3 | Vowels before the consonant เอ แอ โอ (+ short เอะ แอะ โอะ) | |
-| C7 | Consonants ว–ฮ | |
-| X2 | Review 2: all 44 consonants | |
-| C8 | Look-alike letters | shapes · names |
-| C9 | English letters with two Thai letters (K → ก/ค, T → ต/ท, P → ป/พ, J/CH, R/L) and same-sound letters (ส ศ ษ ซ) | similar sounds · sounds |
-| V4 | อึ อือ เออ เอาะ (+ short เออะ) | |
-| V5 | Vowels with several parts เอีย เอือ อัว | |
-| V6 | Special vowels ไอ ใอ เอา อำ ฤ | |
-| X3 | Review 3: all vowels | |
-| R1 | Read new syllables (made from any consonant + vowel) | combining |
-| R2 | End sounds (8 final sounds, ั in closed syllables) | end sounds · reading |
-| R3 | Read on your own (romanization hidden) | reading |
-| F1–F4 | **Phase checks**: consonants · sounds · vowels · reading | each skill on its own |
+Content status: Phases 3–8 are **draft** content written by น้องเบ้บ (marked `status: 'draft'` in each data file). A Thai reviewer should check them before launch and change the status to `reviewed`.
 
-Phase 2 unlocks only when every Phase 1 lesson **and** all four phase checks are passed.
+## Certificate
+Passing FINAL issues a certificate of completion (name, date, ID) that can be printed or saved as PDF. It says clearly that it is **not** an accredited or official language qualification.
+
+## Word review & spelling
+Every word seen in a lesson goes into "My words" (Practice tab): spaced review, listening and spelling games are built automatically from `vocab.js`.
+
+## Interface languages
+Menus, sign-in, onboarding and player buttons: English, ไทย, 中文, 日本語, 한국어 (`src/i18n.js`). Lesson explanations are English for now. zh/ja/ko need a native check.
 
 ## English-letter helpers
 Every consonant has a familiar English letter as a **memory aid** (e.g. K → ก, T → ต and ท, L → ล, S → ส), plus a short tip explaining where the English sound is different. The app always labels these as "a memory aid only — not an exact sound". C9 then teaches where one English letter maps to two Thai letters and how to hear the difference. Technical phonetics (IPA, "puff of air") is introduced only where it explains a real distinction.

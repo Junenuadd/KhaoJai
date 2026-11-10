@@ -10,8 +10,11 @@
 //
 // Step types: intro · card (letter) · vcard (vowel) · info · recall · choose · listen · match · build · tone · trace · write
 import { LETTERS, L, nameOf, SOUNDS, FINALS, LOOKALIKES, SAME_SOUND, VOWELS, vowelSet, CLASS_INFO } from './letters.js';
-import { ASSOC, ASSOC_READY } from './associations.js';
+import { ASSOC, ASSOC_READY, ASSOC_OLD } from './associations.js';
 import { PASS } from '../config.js';
+import { TOPICS } from './vocab.js';
+import { GRAMMAR, CULTURE, CHAT, PRACTICAL } from './courses.js';
+import { STATIONS, WORDS as BEYOND_WORDS, TIME_DRILL } from './beyond.js';
 
 /* ---------- skills ---------- */
 export const SKILLS = {
@@ -25,7 +28,15 @@ export const SKILLS = {
   read:    { label: 'Read without romanization', short: 'Reading' },
   tone:    { label: 'Work out tones', short: 'Tones' },
   write:   { label: 'Write letters (approximate check)', short: 'Writing' },
-  assoc:   { label: 'Link English letters to Thai letters', short: 'English links' }
+  assoc:   { label: 'Link English letters to Thai letters', short: 'English links' },
+  meaning: { label: 'Know word meanings', short: 'Meanings' },
+  listen:  { label: 'Understand spoken Thai', short: 'Listening' },
+  spell:   { label: 'Spell words correctly', short: 'Spelling' },
+  grammar: { label: 'Build sentences', short: 'Grammar' },
+  convo:   { label: 'Reply in conversations', short: 'Conversation' },
+  context: { label: 'Choose words for the situation', short: 'Real Thai' },
+  chat:    { label: 'Read chat and slang', short: 'Chat Thai' },
+  practical: { label: 'Read real-life Thai', short: 'Real-life reading' }
 };
 export const PHASE1_SKILLS = ['shape', 'name', 'sound', 'discrim', 'vowel', 'combo', 'final', 'read'];
 
@@ -439,34 +450,238 @@ const L_ = (id, title, th, def, extra = {}) => ({ id, title, th, ...def, ...extr
 /* ---------- C0: English letters → Thai letters (content in data/associations.js) ---------- */
 function assocLesson() {
   const G = ASSOC.filter(g => g.status === 'reviewed');
+  const live = c => !ASSOC_OLD.includes(c) && L[c];
   const engOf = c => G.find(g => g.thai.includes(c))?.eng;
-  const allThai = G.flatMap(g => g.thai);
+  const allThai = G.flatMap(g => g.thai).filter(live);
   const engs = G.map(g => g.eng);
   const qThai2Eng = (c, test) => T({ t: 'choose', skill: 'assoc', key: c, q: 'Which English letter helps you remember this Thai letter?', show: c,
     ...opts(engOf(c), engs, asText), why: `${c} "${nameOf(c)}" (${L[c].rom}) — memory aid: ${engOf(c)}.` }, test);
-  const qEng2Thai = (g, test) => { const c = g.thai[Math.floor(Math.random() * g.thai.length)];
+  const qEng2Thai = (g, test) => { const c = g.thai.filter(live)[0];
     return T({ t: 'choose', skill: 'assoc', key: c, big: true, q: `Which Thai letter can English "${g.eng}" help you remember?`,
       ...opts(c, [...allThai.filter(x => !g.thai.includes(x)), ...(g.compare ? [g.compare] : [])], asChar), why: `"${g.eng}" → ${g.thai.join(' ')}. ${g.note}` }, test); };
   const qHear = (c, test) => T({ t: 'listen', skill: 'assoc', key: c, say: nameOf(c), sayRom: L[c].rom,
     ...opts(engOf(c), engs, asText), why: `You heard "${nameOf(c)}" — ${c}, memory aid ${engOf(c)}.` }, test);
+  const chunks = []; for (let i = 0; i < G.length; i += 3) chunks.push(G.slice(i, i + 3));
+  const main = G.map(g => g.thai.filter(live)[0]).filter(Boolean);   // the most common letter of each group
   return {
     skills: ['assoc'],
     teach: () => {
       const steps = [intro(['English letters you already know can help you remember Thai letters', 'Each Thai letter\'s name and sound', 'Where the real Thai sound is different'],
-        ['Look at each group and listen', 'Practise matching both ways', TEST_HOW()])];
-      G.forEach(g => steps.push({ t: 'info', score: false, title: `${g.eng} → ${g.thai.join('  ')}`,
-        text: `${g.note} Start of a word: "${g.start}"${g.end ? ` · at the end: "${g.end}"` : ''}. A memory aid only — always listen to the Thai sound.`,
-        rows: [...g.thai, ...(g.compare ? [g.compare] : [])].map(c => [c, `${nameOf(c)} · ${L[c].rom}`, g.compare === c ? `Compare: this is not "${g.eng}"` : '']) }));
-      shuffle(allThai).forEach(c => steps.push(qThai2Eng(c)));
-      shuffle(G).forEach(g => steps.push(qEng2Thai(g)));
-      pick(allThai, Math.min(4, allThai.length)).forEach(c => steps.push(qHear(c)));
+        ['Look at each group and listen', 'Practise matching both ways', TEST_HOW()]),
+        { t: 'info', score: false, title: 'A bridge, not a copy', text: 'Many Thai letters sound a bit like an English letter. Use that link to remember them at first. Some Thai sounds have no exact English match, so always listen to the Thai audio — and later you can drop the English link altogether.' }];
+      chunks.forEach((ch, i) => steps.push({ t: 'info', score: false, title: `English → Thai (${i + 1} of ${chunks.length})`,
+        text: ch.map(g => `<b>${g.eng}</b>: ${g.note}`).join('<br>'),
+        rows: ch.flatMap(g => g.thai.filter(live).map((c, j) => [c, j ? '' : `<b>${g.eng}</b>`, `${nameOf(c)} · ${L[c].rom} · start "${g.start}"${g.end ? ` · end "${g.end}"` : ''}`])) }));
+      steps.push({ t: 'info', score: false, title: 'Not used any more', text: 'ฃ and ฅ are still in the alphabet but no modern word uses them. You only need to recognise them.', compare: ['ฃ', 'ฅ'] });
+      pick(main, 10).forEach(c => steps.push(qThai2Eng(c)));
+      pick(G.filter(g => g.thai.some(live)), 6).forEach(g => steps.push(qEng2Thai(g)));
+      pick(main, 3).forEach(c => steps.push(qHear(c)));
       return steps;
     },
-    test: () => shuffle([...allThai.map(c => qThai2Eng(c, true)), ...G.map(g => qEng2Thai(g, true)), ...pick(allThai, Math.min(3, allThai.length)).map(c => qHear(c, true))]),
-    place: () => pick(allThai, 2).map(c => qThai2Eng(c, true))
+    test: () => shuffle([...pick(allThai, 10).map(c => qThai2Eng(c, true)), ...pick(G.filter(g => g.thai.some(live)), 6).map(g => qEng2Thai(g, true)), ...pick(main, 3).map(c => qHear(c, true))]),
+    place: () => pick(main, 2).map(c => qThai2Eng(c, true))
   };
 }
 const ASSOC_ON = ASSOC_READY && ASSOC.filter(g => g.status === 'reviewed').length >= 2;
+
+
+/* =========================================================
+   WORDS — shared helpers for Phases 3–8 (vocabulary, spelling, word review)
+   ========================================================= */
+const toW = ([th, rom, en, reg]) => ({ th, rom, en, reg });
+export const ALL_WORDS = TOPICS.flatMap(t => t.words.map(w => ({ ...toW(w), topic: t.id })));
+export const ALL_PHRASES = TOPICS.flatMap(t => t.phrases.map(w => ({ ...toW(w), topic: t.id })));
+export const WORD = Object.fromEntries([...ALL_WORDS, ...ALL_PHRASES].map(w => [w.th, w]));
+const MARK_NAMES = { '่': 'tone mark ไม้เอก (mai ek)', '้': 'tone mark ไม้โท (mai toh)', '๊': 'tone mark ไม้ตรี (mai dtree)', '๋': 'tone mark ไม้จัตวา (mai jat-dta-waa)',
+  '์': 'silent mark ์ (the letter under it is not said)', '็': 'short mark ็ (makes the vowel short)', 'ๆ': 'repeat mark ๆ (say the word twice)' };
+// What a written word is made of, piece by piece (for the word card and feedback).
+export function partsOf(th) {
+  return [...th].filter(ch => ch !== ' ').map(ch => L[ch] ? { ch, kind: 'consonant', label: nameOf(ch) } : MARK_NAMES[ch] ? { ch, kind: 'mark', label: MARK_NAMES[ch] } : /[ะ-ฺเ-ๅ]/.test(ch) ? { ch, kind: 'vowel', label: 'vowel part' } : { ch, kind: 'other', label: ch });
+}
+const ROMAN_KEY = w => w.en;
+const SWAPS = [['ส', 'ศ', 'ษ', 'ซ'], ['ท', 'ธ', 'ถ', 'ฐ'], ['ค', 'ข', 'ฆ'], ['พ', 'ผ', 'ภ'], ['น', 'ณ'], ['ล', 'ฬ', 'ร'], ['ต', 'ฏ'], ['ด', 'ฎ'], ['ช', 'ฉ', 'ฌ'], ['ย', 'ญ'], ['ฟ', 'ฝ'], ['บ', 'ป'], ['ใ', 'ไ'], ['ะ', 'า'], ['ิ', 'ี'], ['ุ', 'ู'], ['ึ', 'ื'], ['่', '้', '๊', '๋']];
+// Wrong spellings that a learner could believe: same-sound letters, tone marks, short/long vowels.
+export function misspellings(th, n = 3) {
+  const out = new Set(), cs = [...th];
+  cs.forEach((ch, i) => SWAPS.forEach(g => { if (g.includes(ch)) g.filter(x => x !== ch).forEach(x => { const c = cs.slice(); c[i] = x; out.add(c.join('')); }); }));
+  cs.forEach((ch, i) => { if ('่้๊๋'.includes(ch)) out.add(cs.filter((_, j) => j !== i).join('')); });
+  if (!/[่้๊๋]/.test(th)) { const i = cs.findIndex(c => L[c]); if (i >= 0) { const c = cs.slice(); c.splice(i + 1, 0, '่'); out.add(c.join('')); } }
+  out.delete(th);
+  return pick([...out].filter(x => !WORD[x]), n);
+}
+const spellTile = t => [t, '', /[ัิ-ฺ็-๎]/.test(t) ? '◌' + t : t];
+function spellExtras(th) {
+  const cs = [...th], ex = new Set();
+  cs.forEach(ch => SWAPS.forEach(g => { if (g.includes(ch)) g.filter(x => x !== ch).forEach(x => ex.add(x)); }));
+  cs.forEach(c => ex.delete(c));
+  const list = pick([...ex], 2);
+  return list.length >= 2 ? list : [...list, ...pick(['า', 'ี', 'น', 'ม', 'ก'].filter(x => !cs.includes(x)), 2 - list.length)];
+}
+const canSpell = w => !/\s/.test(w.th) && [...w.th].length >= 2 && [...w.th].length <= 7;
+
+const wordWhy = w => `${w.th} (${w.rom}) = ${w.en}. Written: ${partsOf(w.th).map(p => p.ch + (p.kind === 'consonant' ? '' : '')).join(' + ')}.`;
+const qMeaning = (w, pool, test) => T({ t: 'choose', skill: 'meaning', key: w.th, word: w.th, q: 'What does this mean?', show: w.th, showR: w.rom, hideRom: !!test,
+  ...opts(w, pool, x => [x.en, ''], 4, ROMAN_KEY), why: wordWhy(w), sayAfter: w.th }, test);
+const qThaiFor = (w, pool, test) => T({ t: 'choose', skill: 'meaning', key: w.th, word: w.th, thai: true, q: `Which one means "${w.en}"?`,
+  ...opts(w, pool, x => [x.th, x.rom], 4, x => x.th), why: wordWhy(w), sayAfter: w.th }, test);
+const qHearW = (w, pool, test) => T({ t: 'listen', skill: 'listen', key: w.th, word: w.th, say: w.th, sayRom: w.rom,
+  ...opts(w, pool, x => [x.en, ''], 4, ROMAN_KEY), why: `You heard ${w.th} (${w.rom}) — ${w.en}.` }, test);
+const qSpellW = (w, test) => T({ t: 'build', skill: 'spell', key: w.th, word: w.th, q: `Spell "${w.en}" (${w.rom})`, sayWord: w.th,
+  ans: [...w.th].map(spellTile), extra: spellExtras(w.th).map(spellTile), why: `${w.th} = ${[...w.th].join(' + ')}. Vowels เ แ โ ใ ไ are written before the consonant; tone marks sit above it.` }, test);
+const qMisspell = (w, test) => { const wrong = misspellings(w.th); if (wrong.length < 2) return qSpellW(w, test);
+  const list = shuffle([w.th, ...wrong]);
+  return T({ t: 'choose', skill: 'spell', key: w.th, word: w.th, big: true, q: `Which is the correct spelling of "${w.en}" (${w.rom})?`, o: list.map(x => [x, '']), a: list.indexOf(w.th),
+    why: `The correct spelling is ${w.th}. The others swap a same-sound letter, a tone mark or a vowel length — they would be read differently or simply be wrong.`, sayAfter: w.th }, test); };
+const qDictation = (w, test) => ({ ...qSpellW(w, test), q: 'Listen and spell the word you hear', dictation: true });
+const matchWords = ws => ({ t: 'match', phase: 'Practice', skill: 'meaning', title: 'Match each word to its meaning', pairs: ws.map(w => [w.th, w.en]) });
+const wcard = (w, phase) => ({ t: 'wcard', w, score: false, key: w.th, ...(phase ? { phase } : {}) });
+const spellQ = (w, test, i = 0) => canSpell(w) ? (i % 3 === 2 ? qDictation(w, test) : i % 2 ? qMisspell(w, test) : qSpellW(w, test)) : qMisspell(w, test);
+
+/* ---------- Phase 3: a topic lesson ---------- */
+function topicLesson(topic) {
+  const ws = topic.words.map(w => ({ ...toW(w), topic: topic.id })), ps = topic.phrases.map(toW);
+  const pool = ws.length >= 6 ? ws : [...ws, ...ALL_WORDS];
+  return {
+    skills: ['meaning', 'listen', 'spell'], words: ws.map(w => w.th),
+    teach: () => {
+      const steps = [intro([`${ws.length} everyday words: ${ws.slice(0, 5).map(w => w.th).join(' · ')} …`, 'What each word means and how it is spelled', `${ps.length} useful phrases`],
+        ['Learn each word card — listen, see how it is written', 'Practise meaning, listening and spelling', TEST_HOW()]),
+        { t: 'info', score: false, title: `${topic.icon} Good to know`, text: topic.tip }];
+      for (let i = 0; i < ws.length; i += 4) {
+        const chunk = ws.slice(i, i + 4);
+        chunk.forEach(w => steps.push(wcard(w)));
+        chunk.slice(0, 2).forEach(w => steps.push(qMeaning(w, pool)));
+      }
+      steps.push(matchWords(pick(ws, Math.min(5, ws.length))));
+      pick(ws, 3).forEach(w => steps.push(qThaiFor(w, pool)));
+      pick(ws, 3).forEach(w => steps.push(qHearW(w, pool)));
+      pick(ws.filter(canSpell), 2).forEach((w, i) => steps.push(spellQ(w, false, i)));
+      steps.push({ t: 'info', score: false, title: 'Useful phrases', text: 'Listen and repeat each phrase out loud. You will meet them again in conversations.', examples: ps.map(p => [p.th, p.rom, p.en]) });
+      pick(ps, Math.min(2, ps.length)).forEach(p => steps.push(qMeaning(p, [...ps, ...pool])));
+      return steps;
+    },
+    test: () => {
+      const s = [...pick(ws, 4).map(w => qMeaning(w, pool, true)), ...pick(ws, 3).map(w => qThaiFor(w, pool, true)), ...pick(ws, 3).map(w => qHearW(w, pool, true)),
+        ...pick(ws, 3).map((w, i) => spellQ(w, true, i)), ...pick(ps, 1).map(p => qMeaning(p, [...ps, ...pool], true))];
+      return shuffle(s);
+    },
+    place: () => pick(ws, 1).map(w => qMeaning(w, pool, true))
+  };
+}
+
+/* ---------- Phase 4: grammar ---------- */
+const sentTile = t => [t[0], t[1], t[0]];
+const qOrder = (o, test) => T({ t: 'build', skill: 'grammar', key: o.ans.map(a => a[0]).join(''), q: `Put the words in order: "${o.en}"`, sayWord: o.ans.map(a => a[0]).join(''),
+  ans: o.ans.map(sentTile), extra: (o.extra || []).map(sentTile), why: `${o.ans.map(a => a[0]).join(' ')} (${o.ans.map(a => a[1]).join(' ')}) = ${o.en}` }, test);
+const qPickSentence = (p, test) => { const list = shuffle(p.o.map((x, i) => ({ x, i })));
+  return T({ t: 'choose', skill: 'grammar', key: p.o[p.a][0], thai: true, q: p.q, o: list.map(({ x }) => [x[0], x[1]]), a: list.findIndex(y => y.i === p.a), why: p.why, sayAfter: p.o[p.a][0] }, test); };
+const GRAMMAR_EGS = () => GRAMMAR.flatMap(g => g.examples.map(([th, rom, en]) => ({ th, rom, en })));
+const qSentMeaning = (e, test) => T({ t: 'choose', skill: 'grammar', key: e.th, q: 'What does this sentence mean?', show: e.th, showR: e.rom, hideRom: !!test,
+  ...opts(e, GRAMMAR_EGS(), x => [x.en, ''], 4, x => x.en), why: `${e.th} (${e.rom}) = ${e.en}`, sayAfter: e.th }, test);
+function grammarLesson(g) {
+  const egs = g.examples.map(([th, rom, en]) => ({ th, rom, en }));
+  return {
+    skills: ['grammar'],
+    teach: () => [intro([g.title, 'Short rules with real examples'], ['Read the rule and listen to the examples', 'Build sentences from word tiles', TEST_HOW()]),
+      ...g.explain.map(([title, text], i) => ({ t: 'info', score: false, title, text, ...(i === 0 ? { examples: g.examples } : {}) })),
+      ...g.order.map(o => qOrder(o)), ...g.pick.map(p => qPickSentence(p)), ...pick(egs, 2).map(e => qSentMeaning(e))],
+    test: () => shuffle([...pick(g.order, 3).map(o => qOrder(o, true)), ...g.pick.map(p => qPickSentence(p, true)), ...pick(egs, 2).map(e => qSentMeaning(e, true))]),
+    place: () => [qOrder(g.order[0], true)]
+  };
+}
+
+/* ---------- Phase 5–7: conversations reused from beyond.js ---------- */
+// beyond.js uses a phonetic romanization with tone accents; convert it to KhaoJai's simpler system.
+export function toKJ(s) {
+  if (!s || typeof s !== 'string') return s;
+  let r = s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  [['ʉa', 'uea'], ['ʉʉ', 'uue'], ['ʉ', 'ue'], ['ɔɔ', 'or'], ['ɔ', 'o'], ['ɛɛ', 'ae'], ['ɛ', 'ae'], ['əə', 'er'], ['ə', 'er'], ['oo', 'oh'], ['uu', 'oo'], ['ee', 'eh'], ['ii', 'ee'], ['ph', 'p'], ['th', 't'], ['kh', 'k']]
+    .forEach(([a, b]) => { r = r.split(a).join(b); });
+  return r;
+}
+const kjPair = o => Array.isArray(o) ? o.map((x, i) => i === 1 ? toKJ(x) : x) : o;
+function kjStep(e, skill) {
+  return { ...e, skill: e.skill || skill(e), o: e.o?.map(kjPair), ans: e.ans?.map(kjPair), extra: e.extra?.map(kjPair), showR: toKJ(e.showR), msgR: toKJ(e.msgR),
+    key: e.key || e.say || e.show || e.msg || (e.ans && e.ans.map(a => a[0]).join('')) || e.q };
+}
+const convoSkill = e => e.t === 'listen' ? 'listen' : 'convo';
+function stationLesson(id, skill = convoSkill) {
+  const st = STATIONS[id];
+  const words = (st.words || []).filter(w => BEYOND_WORDS[w]).map(w => ({ th: w, rom: toKJ(BEYOND_WORDS[w][0]), en: BEYOND_WORDS[w][1] }));
+  const wq = (w, test) => T({ t: 'choose', skill: skill({ t: 'choose' }), key: w.th, q: 'What does this mean?', show: w.th, showR: w.rom, hideRom: !!test,
+    ...opts(w, words.length >= 4 ? words : [...words, ...ALL_WORDS], x => [x.en, ''], 4, x => x.en), why: `${w.th} (${w.rom}) = ${w.en}`, sayAfter: w.th }, test);
+  const steps = st.ex.map(e => kjStep(e, skill));
+  return {
+    skills: [...new Set(steps.map(s => s.skill))],
+    teach: () => [intro([st.en, ...(words.length ? [`Words: ${words.map(w => w.th).join(' · ')}`] : [])], ['Listen to every line and say it out loud', 'Pick the reply that fits', TEST_HOW()]),
+      ...(words.length ? [{ t: 'info', score: false, title: 'Words for this lesson', text: 'Tap each word to hear it. Say it out loud after the audio.', examples: words.map(w => [w.th, w.rom, w.en]) }] : []),
+      ...steps.map(s => ({ ...s, phase: 'Practice' }))],
+    test: () => shuffle([...steps.map(s => ({ ...s, test: true, phase: 'Test' })), ...pick(words, Math.min(3, words.length)).map(w => wq(w, true))]),
+    place: () => [{ ...steps[0], test: true }]
+  };
+}
+// Listening lesson built from Phase 3 words and phrases: hear it, pick the meaning; speak it back.
+function listeningLesson(topicIds, title) {
+  const ws = ALL_WORDS.filter(w => topicIds.includes(w.topic)), ps = ALL_PHRASES.filter(w => topicIds.includes(w.topic)), all = [...ws, ...ps];
+  return { skills: ['listen'],
+    teach: () => [intro([title, 'Understand words and phrases by ear, without reading'], ['Listen first, then choose', 'Use "slowly" when you need it', TEST_HOW()]),
+      { t: 'info', score: false, title: 'Speak it back', text: 'Shadowing: play a phrase, then say it out loud at the same time as the audio. It trains your ear and your mouth together. (KhaoJai does not score pronunciation automatically.)', examples: ps.map(p => [p.th, p.rom, p.en]) },
+      ...pick(all, 8).map(w => qHearW(w, all))],
+    test: () => pick(all, 10).map(w => qHearW(w, all, true)) };
+}
+
+/* ---------- Phase 6: culture ---------- */
+function cultureLesson(c) {
+  const q = (it, test) => { const list = shuffle(it.o.map((x, i) => ({ x, i })));
+    return T({ t: 'choose', skill: 'context', key: it.scene, q: it.scene, thai: true,
+      o: list.map(({ x }) => test ? [x[0], x[1]] : [x[0], [x[1], x[2]].filter(Boolean).join(' — ')]), a: list.findIndex(y => y.i === it.a), why: it.why }, test); };
+  return { skills: ['context'],
+    teach: () => [intro([c.title, 'What Thais say — and why'], ['Read the explanation', 'Choose what fits each situation', TEST_HOW()]),
+      ...c.explain.map(([title, text]) => ({ t: 'info', score: false, title, text })), ...c.items.map(it => q(it))],
+    test: () => shuffle(c.items.map(it => q(it, true))) };
+}
+
+/* ---------- Phase 7: chat & slang ---------- */
+function chatLesson(c) {
+  const es = c.entries.map(([th, rom, en, reg]) => ({ th, rom, en, reg }));
+  const qm = (e, test) => T({ t: 'choose', skill: 'chat', key: e.th, q: 'In a chat, what does this mean?', show: e.th, showR: e.rom, showNoSay: true, hideRom: !!test,
+    ...opts(e, es, x => [x.en, ''], 4, x => x.en), why: `${e.th} (${e.rom}) = ${e.en}. Register: ${e.reg}.` }, test);
+  const qr = (e, test) => T({ t: 'choose', skill: 'chat', key: e.th + ':reg', q: `Where would you use ${e.th}?`, show: e.th, showNoSay: true,
+    o: [['With friends and online', ''], ['In a formal email to a company', ''], ['When meeting a monk', '']], a: 0, why: `${e.th} is ${e.reg} — keep it for friends and social media.` }, test);
+  return { skills: ['chat'],
+    teach: () => [intro([c.title, `Last checked: ${c.reviewed}. Slang changes — KhaoJai keeps this list updated.`], ['Read what each one means and when to use it', 'Practise reading them', TEST_HOW()]),
+      ...c.explain.map(([title, text]) => ({ t: 'info', score: false, title, text })),
+      { t: 'info', score: false, title: 'The list', rows: es.map(e => [e.th, `${e.rom} — ${e.en}`, e.reg]) },
+      { t: 'match', phase: 'Practice', skill: 'chat', title: 'Match each one to its meaning', pairs: pick(es, 5).map(e => [e.th, e.en]) },
+      ...pick(es, 4).map(e => qm(e))],
+    test: () => shuffle([...pick(es, 6).map(e => qm(e, true)), ...pick(es, 2).map(e => qr(e, true))]) };
+}
+
+/* ---------- Phase 8: practical reading ---------- */
+function practicalLesson(p) {
+  const q = (it, test) => { const list = shuffle(it.o.map((x, i) => ({ x, i })));
+    return T({ t: 'choose', skill: 'practical', key: it.show, q: it.q, show: it.show, showR: it.rom, hideRom: !!test, noSayBefore: !!test,
+      o: list.map(({ x }) => [x, '']), a: list.findIndex(y => y.i === it.a), why: `${it.show} (${it.rom}) — ${it.why}`, sayAfter: it.show }, test); };
+  return { skills: ['practical'],
+    teach: () => [intro([p.title, p.intro], ['Read the Thai first — show romanization only if you need it', 'Check the meaning', TEST_HOW()]), ...pick(p.items, Math.ceil(p.items.length / 2)).map(it => q(it))],
+    test: () => shuffle(p.items.map(it => q(it, true))) };
+}
+
+/* ---------- phase checks and the final course assessment ---------- */
+function checkOf(lessonDefs, what, mark, per = 3) {
+  return { skills: [...new Set(lessonDefs.flatMap(l => l.skills))], check: true, mark: () => mark,
+    teach: () => checkIntro(what, mark),
+    test: () => shuffle(lessonDefs.flatMap(l => pick(l.test(), per))).map(s => ({ ...s, test: true, phase: 'Test' })) };
+}
+
+function finalCheck() {
+  const parts = [[checkConsonants(), 3], [checkVowels(), 2], [checkReading(), 3], [toneRulesLesson(), 2], ...TOPICS.slice(0, 6).map(t => [topicLesson(t), 1]),
+    ...GRAMMAR.slice(0, 4).map(g => [grammarLesson(g), 1]), [listeningLesson(['T1', 'T2', 'T4'], ''), 2], ...CULTURE.map(c => [cultureLesson(c), 1]), ...CHAT.map(c => [chatLesson(c), 1]), ...PRACTICAL.map(p => [practicalLesson(p), 1])];
+  return { skills: [...new Set(parts.flatMap(([l]) => l.skills))], check: true, final: true, mark: () => PASS.final,
+    teach: () => [intro(['Everything from Phases 1–8: reading, rules, words, sentences, listening, real-life Thai, chat and practical reading', '30 questions, new each time'],
+      ['Romanization is hidden where reading is tested', `Pass mark ${PASS.final}%, and at least ${PASS.skillMin}% in each skill`, 'Pass to receive your KhaoJai course-completion certificate'])],
+    test: () => shuffle(parts.flatMap(([l, n]) => pick(l.test(), n))).map(s => ({ ...s, test: true, phase: 'Test' })) };
+}
 
 export const PHASES = [
   { n: 1, id: 'p1', title: 'Reading Foundations', th: 'พื้นฐานการอ่าน', color: 'lav',
@@ -510,9 +725,41 @@ export const PHASES = [
       L_('G6', 'Silent letters ์', 'ยักษ์ · จันทร์', silentLesson()),
       L_('G7', 'Phase check: reading rules', '16 questions', checkRules())
     ] },
-  { n: 3, id: 'p3', title: 'Vocabulary & Meaning', th: 'คำศัพท์และความหมาย', color: 'peach', soon: true, can: 'Learn common words, everyday expressions and their meanings', lessons: [] },
-  { n: 4, id: 'p4', title: 'Sentences & Grammar', th: 'ประโยคและไวยากรณ์', color: 'sky', soon: true, can: 'Build Thai sentences: word order, particles, questions and negation', lessons: [] },
-  { n: 5, id: 'p5', title: 'Listening, Speaking & Real-life Thai', th: 'ฟัง พูด และใช้จริง', color: 'pink', life: true, can: 'Everyday conversations, chat and culture', lessons: [] }
+  { n: 3, id: 'p3', title: 'Vocabulary & Meaning', th: 'คำศัพท์และความหมาย', color: 'peach',
+    can: 'Understand, say and spell about 100 everyday words and phrases',
+    lessons: [...TOPICS.map(t => L_(t.id, t.title, t.th, topicLesson(t))),
+      L_('P3', 'Phase check: words', '16 questions', checkOf(TOPICS.map(topicLesson), 'the words from Phase 3', PASS.lesson, 2))] },
+  { n: 4, id: 'p4', title: 'Sentences & Grammar', th: 'ประโยคและไวยากรณ์', color: 'sky',
+    can: 'Build simple Thai sentences: word order, questions, no, time words, counting and politeness',
+    lessons: [...GRAMMAR.map(g => L_(g.id, g.title, g.th, grammarLesson(g))),
+      L_('P4', 'Phase check: sentences', '18 questions', checkOf(GRAMMAR.map(grammarLesson), 'Thai sentences and grammar', PASS.lesson, 3))] },
+  { n: 5, id: 'p5', title: 'Listening & Speaking', th: 'ฟังและพูด', color: 'pink',
+    can: 'Follow short everyday conversations and reply',
+    lessons: [
+      L_('L1', 'Say hello', 'สวัสดี · ขอบคุณ', stationLesson('s1')),
+      L_('L2', 'What\'s your name?', 'คุณชื่ออะไร', stationLesson('s2')),
+      L_('L3', 'At the café', 'ชาเย็น หวานน้อย', stationLesson('s3')),
+      L_('L4', 'Not spicy, please', 'ไม่เผ็ด', stationLesson('s4')),
+      L_('L5', 'Listening: numbers & time', 'ฟังตัวเลข เวลา', listeningLesson(['T2', 'T3'], 'Numbers, days and times by ear')),
+      L_('L6', 'Listening: out and about', 'ฟังเวลาเดินทาง ซื้อของ', listeningLesson(['T4', 'T5', 'T6'], 'Food, shopping and directions by ear')),
+      L_('P5', 'Phase check: listening', '15 questions', checkOf(['s1', 's2', 's3', 's4'].map(x => stationLesson(x)).concat([listeningLesson(['T2', 'T3', 'T4', 'T5', 'T6'], 'Listening')]), 'listening and replying', PASS.lesson, 3))] },
+  { n: 6, id: 'p6', title: 'Real Thai & Culture', th: 'ภาษาไทยในชีวิตจริง', color: 'lemon',
+    can: 'Choose the right words for the person and the situation',
+    lessons: [
+      L_('K1', 'Meet a Thai family', 'ไหว้ · กินข้าวยัง', stationLesson('m1', () => 'context')),
+      ...CULTURE.map(c => L_(c.id, c.title, c.th, cultureLesson(c))),
+      L_('P6', 'Phase check: real Thai', '12 questions', checkOf([stationLesson('m1', () => 'context'), ...CULTURE.map(cultureLesson)], 'choosing words for the situation', PASS.lesson, 3))] },
+  { n: 7, id: 'p7', title: 'Chat, Slang & Internet Thai', th: 'ภาษาแชตและสแลง', color: 'lav',
+    can: 'Read Thai chat messages, laughs, short forms and popular slang',
+    lessons: [
+      L_('H1', 'Chat like a Thai', '555 · พน · จ้า', stationLesson('s5', () => 'chat')),
+      L_('H2', 'Sulking & teasing', 'งอน · เขิน · แซว', stationLesson('s6', () => 'chat')),
+      ...CHAT.map(c => L_(c.id, c.title, c.th, chatLesson(c))),
+      L_('P7', 'Phase check: chat Thai', '12 questions', checkOf([stationLesson('s5', () => 'chat'), stationLesson('s6', () => 'chat'), ...CHAT.map(chatLesson)], 'chat and internet Thai', PASS.lesson, 3))] },
+  { n: 8, id: 'p8', title: 'Practical Thai', th: 'ใช้ภาษาไทยได้จริง', color: 'mint',
+    can: 'Read signs, menus, messages and travel information on your own',
+    lessons: [...PRACTICAL.map(p => L_(p.id, p.title, p.th, practicalLesson(p))),
+      L_('FINAL', 'Final course assessment', '30 questions · all phases', finalCheck())] }
 ];
 
 export const WRITING = { id: 'wr', title: 'Writing track', th: 'ฝึกเขียน', color: 'peach', optional: true,
@@ -588,6 +835,14 @@ export function skillDrill(skill, keys) {
     case 'read': { const w = [...READ_WORDS, ...CVC_WORDS]; return pick(w, 8).map(x => qWord(x, w, false, 'read', true)); }
     case 'tone': return toneRulesLesson().test().map(s => ({ ...s, test: false, phase: 'Practice' }));
     case 'write': return pick(lp, 4).map(c => ({ t: 'trace', phase: 'Practice', skill: 'write', key: c, c }));
+    case 'meaning': case 'listen': return wordDrill(keys.filter(k => WORD[k]), skill === 'listen' ? 'listen' : 'review');
+    case 'spell': return wordDrill(keys.filter(k => WORD[k]), 'spell');
+    case 'grammar': return shuffle(GRAMMAR).slice(0, 3).flatMap(g => grammarLesson(g).test().slice(0, 3)).map(s => ({ ...s, test: false, phase: 'Practice' }));
+    case 'context': return shuffle(CULTURE).flatMap(c => cultureLesson(c).test().slice(0, 3)).map(s => ({ ...s, test: false, phase: 'Practice' }));
+    case 'chat': return CHAT.flatMap(c => chatLesson(c).test().slice(0, 4)).map(s => ({ ...s, test: false, phase: 'Practice' }));
+    case 'practical': return shuffle(PRACTICAL).flatMap(p => practicalLesson(p).test().slice(0, 2)).map(s => ({ ...s, test: false, phase: 'Practice' }));
+    case 'convo': return ['s1', 's2', 's3', 's4'].flatMap(id => stationLesson(id).test().slice(0, 2)).map(s => ({ ...s, test: false, phase: 'Practice' }));
+    case 'assoc': return LESSON.C0 ? LESSON.C0.test().slice(0, 8).map(s => ({ ...s, test: false, phase: 'Practice' })) : [];
   }
   return [];
 }
@@ -595,4 +850,14 @@ export function skillDrill(skill, keys) {
 // Spaced-repetition review for letters and vowels that are due.
 export function reviewDrill(keys) {
   return shuffle(keys).slice(0, 8).map((k, i) => L[k] ? (i % 2 ? qSound(k, []) : qName(k, [])) : V[k] ? qVowelSee(V[k], VOWELS) : null).filter(Boolean).map(s => ({ ...s, phase: 'Review' }));
+}
+
+// Word review (Practice tab): the words a learner has met, mixed question types. Missed words come first.
+export function wordDrill(ths, mode = 'review') {
+  let ws = uniq(ths).map(t => WORD[t]).filter(Boolean);
+  if (ws.length < 4) ws = [...ws, ...pick(ALL_WORDS.filter(w => !ws.includes(w)), 4 - ws.length)];
+  const pool = ws.length >= 4 ? ws : ALL_WORDS, list = ws.slice(0, 10);
+  if (mode === 'spell') return list.slice(0, 8).map((w, i) => ({ ...spellQ(w, false, i), phase: 'Review' }));
+  if (mode === 'listen') return list.slice(0, 8).map(w => ({ ...qHearW(w, pool), phase: 'Review' }));
+  return list.slice(0, 8).map((w, i) => ({ ...[qMeaning, qThaiFor, qHearW][i % 3](w, pool), phase: 'Review' }));
 }

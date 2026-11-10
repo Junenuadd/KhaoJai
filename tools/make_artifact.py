@@ -7,6 +7,6 @@ body = re.search(r'<!--APP-->(.*)<!--/APP-->', html, re.S).group(1)
 fonts = re.search(r'<link rel="stylesheet" href="https://fonts[^>]+>', html).group(0)
 head = ('<title>KhaoJai</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n'
         '<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-        + fonts + '\n<link rel="stylesheet" href="src/styles.css">\n')
+        + fonts + '\n<link rel="stylesheet" href="src/styles.css">\n<script>window.KJ_PREVIEW = true;</script>\n')
 (root / 'artifact.html').write_text(head + body, encoding='utf-8')
 print('wrote artifact.html')

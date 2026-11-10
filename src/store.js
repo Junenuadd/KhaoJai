@@ -15,7 +15,10 @@ const DEFAULTS = {
   recite: { groups: {}, weak: [] },
   done: {},             // Real-life Thai stations
   points: 0, today: { day: '', points: 0 }, streak: 0, lastDay: '',
-  words: [],
+  words: [],            // words collected (Thai text)
+  wcards: {},           // word -> { box, due, wrong, right, spellWrong } — word review (spaced repetition)
+  lang: '',             // interface language: '' = follow the device, or en / th / zh / ja / ko
+  cert: null,           // { id, name, date, score } once the final assessment is passed
   rom: true, explainLang: 'English', adult: false, sound: true, unlockAll: false,
   plan: 'free', credits: 0, homework: [],
   updatedAt: 0
@@ -110,3 +113,15 @@ export function seeLetter(c, right) {
 export const dueLetters = () => Object.entries(S.cards).filter(([, k]) => k.due <= Date.now()).map(([c]) => c);
 export const troubleLetters = () => Object.entries(S.cards).filter(([, k]) => k.wrong > 0).sort((a, b) => (b[1].wrong - b[1].right / 3) - (a[1].wrong - a[1].right / 3)).slice(0, 8).map(([c]) => c);
 export const knownLetters = isLetter => Object.entries(S.cards).filter(([c, k]) => k.box >= 3 && isLetter(c)).length;
+
+/* ---------- word memory (Phase 3+): meaning, listening and spelling share one card per word ---------- */
+export function seeWord(w, right, skill) {
+  const k = S.wcards[w] || (S.wcards[w] = { box: 0, due: 0, wrong: 0, right: 0, spellWrong: 0 });
+  if (right) { k.right++; k.box = Math.min(5, k.box + 1); }
+  else { k.wrong++; k.box = Math.max(0, k.box - 2); if (skill === 'spell') k.spellWrong++; }
+  k.due = Date.now() + SRS_DAYS[k.box] * 864e5;
+  if (!S.words.includes(w)) S.words.push(w);
+}
+export const dueWords = () => Object.entries(S.wcards).filter(([, k]) => k.due <= Date.now()).map(([w]) => w);
+export const troubleWords = () => Object.entries(S.wcards).filter(([, k]) => k.wrong > 0).sort((a, b) => b[1].wrong - a[1].wrong).slice(0, 10).map(([w]) => w);
+export const spellTrouble = () => Object.entries(S.wcards).filter(([, k]) => k.spellWrong > 0).map(([w]) => w);

@@ -71,3 +71,7 @@ Verifying phone numbers by SMS needs a paid SMS provider (Twilio, Vonage, Messag
 ## More sign-in options
 Google, Apple and Facebook buttons show "soon" until the provider is switched on in **Authentication → Providers**; then they work without code changes.
 Apple needs a paid Apple Developer account.
+
+## Delete account (v0.7)
+The app's **Me → Delete account** button calls the database function `delete_my_account()`.
+Run `docs/sql/delete_account.sql` once in Supabase → SQL Editor (project KaoJai). It removes the learner's progress row and their sign-in account. Until it is run, the button shows a friendly "not ready yet" message.

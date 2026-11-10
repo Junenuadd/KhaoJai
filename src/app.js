@@ -1,20 +1,23 @@
 // KhaoJai — app shell, routing and screens.
 // Journey: Sign in / guest → How KhaoJai teaches → a few questions (+ optional placement) → Dashboard → lessons.
-import { S, save, resetAll, todayPoints, dailyGoal, lessonState, isPassed, markPlaced, dueLetters, troubleLetters, knownLetters, skillSummary, seeLetter } from './store.js';
-import { PHASES, WRITING, ALL_LESSONS, LESSON, SKILLS, PHASE1_SKILLS, passMark, phaseOf, placementSteps, REVIEW_COVERS, remedialSteps, skillDrill, reviewDrill } from './data/curriculum.js';
+import { S, save, resetAll, todayPoints, dailyGoal, lessonState, isPassed, markPlaced, dueLetters, troubleLetters, knownLetters, skillSummary, seeLetter, dueWords, troubleWords, spellTrouble } from './store.js';
+import { PHASES, WRITING, ALL_LESSONS, LESSON, SKILLS, PHASE1_SKILLS, passMark, phaseOf, placementSteps, REVIEW_COVERS, remedialSteps, skillDrill, reviewDrill, wordDrill, WORD } from './data/curriculum.js';
 import { LETTERS, L, SOUNDS, CLASS_INFO, SAME_SOUND, VOWELS } from './data/letters.js';
 import { LINES, STATIONS, TIME_DRILL } from './data/beyond.js';
 import { DICT, DECODE_EXAMPLES, decode } from './data/decoder.js';
-import { ic, jai, esc, toast, say } from './ui.js';
+import { ic, jai, mascot, esc, toast, say } from './ui.js';
 import { P, startLesson, renderPlayer, playerAction, playerKey, mountPlayer } from './player.js';
 import { PLANS, checkoutSheet, wireCheckout, stopQr } from './checkout.js';
 import { mountPad, shapeScore, recognize } from './draw.js';
 import { PASS, LEVEL } from './config.js';
 import * as Auth from './auth.js';
+import { SONG } from './data/song.js';
+import { RECORDINGS } from './data/audio.js';
+import { t as tr, LANGS, lang } from './i18n.js';
 
-const ROUTES = ['auth', 'notice', 'onboard', 'map', 'letters', 'practice', 'decoder', 'me', 'homework', 'plans', 'play'];
+const ROUTES = ['auth', 'notice', 'onboard', 'cert', 'privacy', 'map', 'letters', 'practice', 'decoder', 'me', 'homework', 'plans', 'play'];
 const GATE = ['auth', 'notice', 'onboard'];
-const NAV = [['map', 'Learn', 'map'], ['letters', 'ก–ฮ', 'abc'], ['practice', 'Practice', 'practice'], ['decoder', 'Decoder', 'decoder'], ['me', 'Me', 'me']];
+const NAV = [['map', 'learn', 'map'], ['letters', 'letters', 'abc'], ['practice', 'practice', 'practice'], ['decoder', 'decoder', 'decoder'], ['me', 'me', 'me']];
 let route = 'map', billing = 'monthly', dText = DECODE_EXAMPLES[0];
 let openPhase = null, lettersTab = 'chart', studio = { c: 'ก', guide: true, strokes: [], score: null };
 let fc = { deck: [], i: 0, flip: false };
@@ -25,7 +28,7 @@ const isLetter = c => !!L[c];
 /* ---------- unlocking ---------- */
 const lessonsOf = ph => ph.lessons;
 const phasePassed = n => { const ph = PHASES[n - 1]; return ph.lessons.length > 0 && ph.lessons.every(l => isPassed(l.id)); };
-const phaseOpen = ph => S.unlockAll || ph.n === 1 || (ph.n === 2 && phasePassed(1)) || (ph.life && phasePassed(2));
+const phaseOpen = ph => S.unlockAll || ph.n === 1 || phasePassed(ph.n - 1);   // each phase opens when the one before it is passed
 function lessonOpen(id) {
   const l = LESSON[id];
   if (S.unlockAll || lessonState(id) !== 'not_started') return true;
@@ -47,8 +50,8 @@ function nextLesson() {
   for (const ph of PHASES) for (const l of ph.lessons) if (!isPassed(l.id) && lessonOpen(l.id)) return l;
   return null;
 }
-const currentPhase = () => PHASES.find(ph => ph.lessons.length && !phasePassed(ph.n)) || PHASES[1];
-const nextAfter = id => { const l = LESSON[id]; const list = l.phase === 'W' ? WRITING.lessons : PHASES[l.phase - 1].lessons; return list[l.idx + 1] || (l.phase === 1 && phasePassed(1) ? PHASES[1].lessons[0] : null); };
+const currentPhase = () => PHASES.find(ph => ph.lessons.length && !phasePassed(ph.n)) || PHASES[PHASES.length - 1];
+const nextAfter = id => { const l = LESSON[id]; const list = l.phase === 'W' ? WRITING.lessons : PHASES[l.phase - 1].lessons; return list[l.idx + 1] || (l.phase !== 'W' && PHASES[l.phase] && phasePassed(l.phase) ? PHASES[l.phase].lessons[0] : null); };
 
 const STATUS = { not_started: ['Not started', ''], viewed: ['Viewed', 'info'], practiced: ['Practice done', 'info'], needs_review: ['Needs review', 'warn'], passed: ['Passed', 'ok'] };
 const statusPill = id => { const s = lessonState(id), r = S.lessons[id]; const [t, c] = STATUS[s]; return `<span class="pill ${c}">${t}${r?.via === 'placement' ? ' · placement' : r?.testBest && s !== 'not_started' ? ` · ${r.testBest}%` : ''}</span>`; };
@@ -61,6 +64,7 @@ const bar = (pct, cls = '') => `<div class="bar ${cls}"><i style="width:${Math.m
 // answers are saved to the account, so returning learners go straight to their dashboard.
 // (Only if accounts are not configured at all — local development — does the app fall back to a device-only guest.)
 function gateRoute(r) {
+  if (r === 'privacy') return r;   // readable before signing in (app-store requirement)
   if (Auth.configured() ? !Auth.signedIn() : !S.entered) return 'auth';
   if (!S.noticeSeen) return 'notice';
   if (!S.profile) return 'onboard';
@@ -79,12 +83,12 @@ function nav() {
   const gate = GATE.includes(route);
   document.body.classList.toggle('gate', gate);
   const cur = ['homework', 'plans'].includes(route) ? 'me' : route;
-  document.getElementById('sidenav').innerHTML = gate ? '' : NAV.map(([r, l, i]) => `<button class="sidelink" data-go="${r}" ${cur === r ? 'aria-current="page"' : ''}>${icon(i)}<span>${r === 'letters' ? 'Letters ก–ฮ' : l}</span></button>`).join('')
-    + `<button class="sidelink" data-go="homework" ${route === 'homework' ? 'aria-current="page"' : ''}>${ic('homework')}<span>Homework</span></button>`
+  document.getElementById('sidenav').innerHTML = gate ? '' : NAV.map(([r, l, i]) => `<button class="sidelink" data-go="${r}" ${cur === r ? 'aria-current="page"' : ''}>${icon(i)}<span>${tr(r === 'letters' ? 'lettersLong' : l)}</span></button>`).join('')
+    + `<button class="sidelink" data-go="homework" ${route === 'homework' ? 'aria-current="page"' : ''}>${ic('homework')}<span>${tr('homework')}</span></button>`
     + `<button class="sidelink" data-go="plans" ${route === 'plans' ? 'aria-current="page"' : ''}>${ic('star')}<span>Plus</span></button>`;
-  document.getElementById('tabbar').innerHTML = gate ? '' : NAV.map(([r, l, i]) => `<button class="tab" data-go="${r}" ${cur === r ? 'aria-current="page"' : ''}>${icon(i)}<span>${l}</span></button>`).join('');
+  document.getElementById('tabbar').innerHTML = gate ? '' : NAV.map(([r, l, i]) => `<button class="tab" data-go="${r}" ${cur === r ? 'aria-current="page"' : ''}>${icon(i)}<span>${tr(l)}</span></button>`).join('');
   const foot = document.querySelector('.side-foot');
-  if (foot) foot.innerHTML = gate ? '' : Auth.signedIn() ? `Signed in as<br><b>${esc(Auth.user()?.email || '')}</b><br><button class="linkbtn" id="mOut">Sign out</button>` : `Guest · progress on this device${Auth.configured() ? '<br><button class="linkbtn" id="mSignIn">Sign in or create an account</button>' : ''}`;
+  if (foot) foot.innerHTML = gate ? '' : Auth.signedIn() ? `Signed in as<br><b>${esc(Auth.user()?.email || '')}</b><br><button class="linkbtn" id="mOut">${tr('signOut')}</button>` : `Guest · progress on this device${Auth.configured() ? '<br><button class="linkbtn" id="mSignIn">Sign in or create an account</button>' : ''}`;
 }
 const icon = n => n === 'abc' ? '<span class="abc" aria-hidden="true">กข</span>' : ic(n);
 
@@ -94,7 +98,7 @@ function topbar() {
     <div class="row nowrap">
       <span class="chip sun" title="Days in a row">${ic('sun')} ${S.streak}</span>
       <span class="chip lav" title="Letters you know well">${icon('abc')} ${knownLetters(isLetter)}/44</span>
-      ${Auth.signedIn() ? `<button class="chip" data-go="me" title="${esc(Auth.user()?.email || 'Account')}">${ic('me')}<span class="hide-xs">Account</span></button>` : Auth.configured() ? `<button class="btn small-btn" id="mSignIn">Sign in</button>` : ''}
+      ${Auth.signedIn() ? `<button class="chip" data-go="me" title="${esc(Auth.user()?.email || 'Account')}">${ic('me')}<span class="hide-xs">${tr('account')}</span></button>` : Auth.configured() ? `<button class="btn small-btn" id="mSignIn">${tr('signIn')}</button>` : ''}
     </div></header>`;
 }
 
@@ -116,23 +120,24 @@ function vAuth() {
   const on = Auth.configured(), dr = auth.draft || (auth.draft = {});
   if (!on) return authShell(sideBrand(), `<section class="stack"><h2>Accounts are not switched on yet</h2><p>You can learn as a guest: your progress is saved <b>on this device only</b>.</p><button class="btn big block" id="aGuest">Start as a guest</button></section>`);
   if (auth.mode === 'welcome') return `<div class="welcome">
-    <div class="wtop">${heroArt(false)}<h1 class="aword big">Khao<b>Jai</b></h1><p class="atag">Read Thai from your very first letter. Short lessons, real tests, no Thai needed to start.</p></div>
+    <div class="wtop"><div class="langpick" role="group" aria-label="${tr('language')}">${LANGS.map(([k, n]) => `<button type="button" class="lp ${lang() === k ? 'on' : ''}" data-lang="${k}">${n}</button>`).join('')}</div>${heroArt(false)}<h1 class="aword big">Khao<b>Jai</b></h1><p class="atag">${tr('tagline')}</p></div>
     <div class="wbtm stack">
-      <div class="wfeat"><span><b lang="th">ก–ฮ</b>44 letters</span><span><b>5 min</b>a day</span><span><b>Free</b>to start</span></div>
-      <button class="btn big block yel" data-amode="signup1">Start learning — create a free account</button>
-      <button class="btn big block line" data-amode="signin">Log in</button></div></div>`;
+      <div class="wfeat"><span><b lang="th">ก–ฮ</b>${tr('letters44')}</span><span><b>5 min</b>${tr('perDay')}</span><span><b>${tr('free')}</b>${tr('toStart')}</span></div>
+      <button class="btn big block yel" data-amode="signup1">${tr('startFree')}</button>
+      <button class="btn big block line" data-amode="signin">${tr('logIn')}</button>
+      <p class="small center"><button class="linkbtn" data-go="privacy">${tr('privacyLink')}</button></p></div></div>`;
   const tiles = up => `<div class="socrow">${SOCIAL.map(([k, label, svg]) => { const ok = Auth.providers[k]; return `<button type="button" class="soc" ${ok ? `data-oauth="${k}"` : 'disabled'} aria-label="${up ? 'Sign up' : 'Sign in'} with ${label}${ok ? '' : ' (coming soon)'}">${svg}<span>${label}</span>${ok ? '' : '<em>soon</em>'}</button>`; }).join('')}</div><div class="ordiv"><span>or with email</span></div>`;
   const submit = (label, busy) => `${authMsgs()}<button class="btn big block" type="submit" ${auth.busy ? 'disabled' : ''}>${auth.busy ? busy : label}</button>`;
-  const pwField = (up) => `<div class="field"><label for="aPw">${up ? 'Create a password' : 'Password'}</label><div class="pwwrap"><input id="aPw" class="input" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" required><button type="button" class="pweye" id="aEye" aria-label="Show password">Show</button></div></div>`;
+  const pwField = (up) => `<div class="field"><label for="aPw">${tr(up ? 'newPassword' : 'password')}</label><div class="pwwrap"><input id="aPw" class="input" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" required><button type="button" class="pweye" id="aEye" aria-label="Show password">Show</button></div></div>`;
   let body;
   switch (auth.mode) {
     case 'signup1': body = `<form class="stack" id="aSignup1" novalidate>${backBtn('welcome')}${stepBar(1)}
-        <div><h2>Create your account</h2><p class="small muted">Your progress is saved to it, on every device.</p></div>${tiles(true)}
-        <div class="field"><label for="aName">Your name</label><input id="aName" class="input" autocomplete="name" maxlength="40" value="${esc(dr.name || '')}" placeholder="What should Jai call you?"></div>
-        <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}" placeholder="you@example.com"></div>
-        <div class="field"><label for="aPhone">Mobile number <span class="muted">(optional)</span></label><div class="phonerow"><select id="aCC" class="input" aria-label="Country code">${CC.map(([c, n]) => `<option value="${c}" ${(dr.cc || '+66') === c ? 'selected' : ''}>${n} ${c}</option>`).join('')}</select><input id="aPhone" class="input" type="tel" inputmode="tel" autocomplete="tel-national" value="${esc(dr.phone || '')}" placeholder="81 234 5678"></div><p class="small muted">For account help and lesson reminders later. We never share it.</p></div>
-        ${submit('Continue', 'Checking…')}
-        <p class="small center">Already have an account? <button class="linkbtn" type="button" data-amode="signin">Sign in</button></p></form>`; break;
+        <div><h2>${tr('createAcct')}</h2><p class="small muted">${tr('savedEvery')}</p></div>${tiles(true)}
+        <div class="field"><label for="aName">${tr('yourName')}</label><input id="aName" class="input" autocomplete="name" maxlength="40" value="${esc(dr.name || '')}" placeholder="What should Jai call you?"></div>
+        <div class="field"><label for="aEmail">${tr('email')}</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}" placeholder="you@example.com"></div>
+        <div class="field"><label for="aPhone">${tr('mobile')} <span class="muted">${tr('optional')}</span></label><div class="phonerow"><select id="aCC" class="input" aria-label="Country code">${CC.map(([c, n]) => `<option value="${c}" ${(dr.cc || '+66') === c ? 'selected' : ''}>${n} ${c}</option>`).join('')}</select><input id="aPhone" class="input" type="tel" inputmode="tel" autocomplete="tel-national" value="${esc(dr.phone || '')}" placeholder="81 234 5678"></div><p class="small muted">For account help and lesson reminders later. We never share it.</p></div>
+        ${submit(tr('continue'), '…')}
+        <p class="small center">${tr('haveAcct')} <button class="linkbtn" type="button" data-amode="signin">${tr('signIn')}</button></p></form>`; break;
     case 'signup2': body = `<form class="stack" id="aSignup2" novalidate>${backBtn('signup1')}${stepBar(2)}
         <div><h2>Choose a password</h2><p class="small muted">For <b>${esc(dr.email || '')}</b></p></div>
         ${pwField(true)}
@@ -140,27 +145,27 @@ function vAuth() {
         <label class="rc agree"><input type="checkbox" id="aAgree"><span class="dot"></span><span class="small">I agree to KhaoJai's terms and privacy policy (early preview).</span></label>
         ${submit('Create account', 'Creating your account…')}</form>`; break;
     case 'verify': body = `<form class="stack" id="aVerify" novalidate>${backBtn(auth.vkind === 'signup' ? 'signup1' : 'signin')}${auth.vkind === 'signup' ? stepBar(3) : ''}
-        <div class="center vhead"><span class="mailic" aria-hidden="true">✉️</span><h2>Check your email</h2><p class="small muted">We sent an email to <b>${esc(dr.email || '')}</b>.<br>Tap the button in it on this device — or type the 6-digit code if the email shows one.</p></div>
+        <div class="center vhead"><span class="mailic" aria-hidden="true">✉️</span><h2>${tr('checkEmail')}</h2><p class="small muted">We sent an email to <b>${esc(dr.email || '')}</b>.<br>Tap the button in it on this device — or type the 6-digit code if the email shows one.</p></div>
         ${otpBoxes()}
         ${submit(auth.vkind === 'signup' ? 'Verify & finish' : 'Sign in', 'Checking the code…')}
         <p class="small center muted" id="resendRow">${auth.cool > 0 ? `You can ask for a new code in <b id="coolN">${auth.cool}</b>s` : `Didn't get it? Check spam, or <button class="linkbtn" type="button" id="aResend">send a new code</button>`}</p>
         <p class="small center"><button class="linkbtn" type="button" data-amode="${auth.vkind === 'signup' ? 'signup1' : 'signincode'}">Use a different email</button></p></form>`; break;
     case 'signincode': body = `<form class="stack" id="aCode" novalidate>${backBtn('signin')}
         <div><h2>Sign in with a code</h2><p class="small muted">No password needed — we'll email you a sign-in link or code.</p></div>
-        <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}"></div>
+        <div class="field"><label for="aEmail">${tr('email')}</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}"></div>
         ${submit('Email me a code', 'Sending…')}</form>`; break;
     case 'reset': body = `<form class="stack" id="aReset" novalidate>${backBtn('signin')}<div><h2>Reset your password</h2><p class="small muted">We'll email you a link to choose a new password.</p></div>
-        <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}"></div>
+        <div class="field"><label for="aEmail">${tr('email')}</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}"></div>
         ${submit('Send reset link', 'Sending…')}</form>`; break;
     case 'newpass': body = `<form class="stack" id="aNewPass" novalidate><div><h2>Choose a new password</h2></div>${pwField(true)}
         <ul class="pwrules" id="pwRules"><li data-r="len">At least 8 characters</li><li data-r="mix">Letters and numbers</li></ul>${submit('Save new password', 'Saving…')}</form>`; break;
     default: body = `<form class="stack" id="aForm" novalidate>${backBtn('welcome')}
-        <div><h2>Welcome back!</h2><p class="small muted">Sign in to keep learning.</p></div>${tiles(false)}
-        <div class="field"><label for="aEmail">Email</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}"></div>
+        <div><h2>${tr('welcomeBack')}</h2><p class="small muted">${tr('signInToKeep')}</p></div>${tiles(false)}
+        <div class="field"><label for="aEmail">${tr('email')}</label><input id="aEmail" class="input" type="email" autocomplete="email" value="${esc(dr.email || '')}"></div>
         ${pwField(false)}
-        <div class="row between"><button class="linkbtn" type="button" data-amode="signincode">Email me a code instead</button><button class="linkbtn" type="button" data-amode="reset">Forgot password?</button></div>
-        ${submit('Sign in', 'Signing in…')}
-        <p class="small center">New to KhaoJai? <button class="linkbtn" type="button" data-amode="signup1">Create an account</button></p></form>`;
+        <div class="row between"><button class="linkbtn" type="button" data-amode="signincode">${tr('codeInstead')}</button><button class="linkbtn" type="button" data-amode="reset">${tr('forgot')}</button></div>
+        ${submit(tr('signIn'), '…')}
+        <p class="small center">${tr('newHere')} <button class="linkbtn" type="button" data-amode="signup1">${tr('createAcct')}</button></p></form>`;
   }
   return authShell(sideBrand(true), body);
 }
@@ -227,7 +232,7 @@ function enterApp() {
 
 /* ---------- 2. How KhaoJai teaches ---------- */
 function vNotice() {
-  return `<div class="gatehead">${jai(84, 'cheer', '#C9B6FF', 'bob')}<div><p class="eyebrow">Before you start</p><h1>Welcome to KhaoJai!</h1></div></div>
+  return `<div class="gatehead">${jai(84, 'cheer', '#C9B6FF', 'bob')}<div><p class="eyebrow">${tr('beforeStart')}</p><h1>Welcome to KhaoJai!</h1></div></div>
   <section class="card stack c-lav-l"><h2>Our first goal is to help you read Thai.</h2>
     <p>Unlike methods that begin with memorising vocabulary and sentences, KhaoJai starts by helping you recognise Thai letters, understand their sounds, learn the vowels, and gradually combine them to read Thai words.</p>
     <p>You can use English-letter associations, romanization, picture memory aids and audio in your early lessons. As you improve, you can hide romanization and practise reading Thai on your own.</p></section>
@@ -237,7 +242,7 @@ function vNotice() {
     <p>KhaoJai puts <b>reading Thai first</b>, before vocabulary memorisation, sentence building and grammar.</p>
     <p>You do <b>not</b> need to know any Thai to start. KhaoJai is made for complete beginners: you learn step by step through guided lessons, practice and short tests.</p>
     <p>Romanization and English-letter associations are learning aids, not exact replacements for Thai pronunciation. The goal is to help you feel comfortable reading Thai script directly.</p></section>
-  <div class="row"><button class="btn big" id="nStart">${S.noticeSeen ? 'Back to learning' : 'Start learning'} ${ic('arrow')}</button></div>`;
+  <div class="row"><button class="btn big" id="nStart">${tr(S.noticeSeen ? 'backLearning' : 'startLearning')} ${ic('arrow')}</button></div>`;
 }
 
 /* ---------- 3. Onboarding ---------- */
@@ -286,7 +291,7 @@ function vMap() {
   const all = Object.values(S.lessons);
   const counts = { viewed: all.filter(l => l.viewed).length, practiced: all.filter(l => l.practiced).length, passed: all.filter(l => l.status === 'passed').length };
   const sk = skillSummary();
-  const shown = [...(sk.assoc ? ['assoc'] : []), ...PHASE1_SKILLS, ...(sk.tone ? ['tone'] : []), ...(sk.write ? ['write'] : [])];
+  const shown = Object.keys(SKILLS).filter(k => PHASE1_SKILLS.includes(k) || sk[k]?.t);   // Phase 1 skills always; later skills once tested
   const strong = shown.filter(k => sk[k]?.pct >= LEVEL.strong), weak = shown.filter(k => sk[k]?.pct !== null && sk[k]?.pct !== undefined && sk[k].pct < LEVEL.developing);
   const tested = shown.filter(k => sk[k]?.t).sort((a, b) => sk[a].pct - sk[b].pct);
   const rec = tested.find(k => sk[k].pct < LEVEL.strong);
@@ -296,10 +301,10 @@ function vMap() {
   <section class="card hero c-lav-l">
     <div class="stack" style="gap:8px;min-width:0;flex:1">
       <p class="eyebrow">Phase ${ph.n} · ${ph.title}</p>
-      <h1>${nx ? esc(nx.title) : 'Phase complete! 🎉'}</h1>
+      <h1>${nx ? esc(nx.title) : S.cert ? 'Course complete! 🎓' : 'Phase complete! 🎉'}</h1>
       <p class="muted">${fresh ? 'Start with the first Thai letters. Every lesson ends with a short test, so you always know what you can really do.' : `Goal of this phase: ${ph.can}.`}</p>
       ${bar(passedN / ph.lessons.length * 100, 'thick')}<p class="small"><b>${passedN} of ${ph.lessons.length}</b> lessons passed in Phase ${ph.n}</p>
-      ${nx ? `<button class="btn big" data-continue="${nx.id}" style="align-self:flex-start">${ic('play')} ${fresh ? 'Start learning' : lessonState(nx.id) === 'needs_review' ? 'Review & retake' : 'Continue learning'}</button>` : ''}
+      ${nx ? `<button class="btn big" data-continue="${nx.id}" style="align-self:flex-start">${ic('play')} ${tr(fresh ? 'startLearning' : lessonState(nx.id) === 'needs_review' ? 'reviewRetake' : 'continueLearning')}</button>` : ''}
     </div>${jai(100, 'happy', '#C9B6FF', 'bob hide-xs')}
   </section>
   ${review.length ? `<section class="card c-peach-l stack"><h3>Needs review</h3>${review.map(l => `<div class="row between"><span><b>${esc(l.title)}</b> <span class="small muted">· last test ${S.lessons[l.id].testLast}% (pass ${passMark(l)}%)</span></span><span class="row"><button class="btn soft" data-remedial="${l.id}">Practise what I missed</button><button class="btn line" data-retest="${l.id}">Retake test</button></span></div>`).join('')}</section>` : ''}
@@ -324,7 +329,7 @@ function lessonRow(l) {
 function phaseCard(ph) {
   const open = phaseOpen(ph), done = ph.lessons.length && phasePassed(ph.n), expanded = openPhase === ph.n;
   const n = ph.lessons.filter(l => isPassed(l.id)).length;
-  const sub = ph.soon ? 'Coming later — not built yet' : ph.life ? (open ? 'Conversations, chat and culture (early preview)' : 'Locked — pass Phase 2 to unlock') : done ? 'Passed ✓' : open ? `${n} of ${ph.lessons.length} passed` : `Locked — pass Phase ${ph.n - 1} to unlock`;
+  const sub = done ? 'Passed ✓' : open ? `${n} of ${ph.lessons.length} passed` : `Locked — pass Phase ${ph.n - 1} to unlock`;
   return `<section class="stage s-${ph.color} ${open && !ph.soon ? '' : 'locked'}">
     <button class="stage-head" data-phase="${ph.n}" aria-expanded="${expanded}">
       <span class="stage-no">${done ? ic('check') : open && !ph.soon ? ph.n : ic('lock')}</span>
@@ -332,7 +337,7 @@ function phaseCard(ph) {
     ${expanded ? `<div class="stage-body"><p class="small">You will be able to: <b>${ph.can}</b>.</p>
       ${ph.soon ? '<p class="small muted">This phase is planned but its lessons are not built yet.</p>' : ''}
       ${ph.n === 1 ? `<p class="small muted">Each lesson ends with a test (pass ${PASS.lesson}%, and at least ${PASS.skillMin}% in each skill). Reviews mix older material. The four phase checks test each skill on its own and unlock Phase 2.</p>` : ''}
-      ${ph.life ? (open ? LINES.map(line => `<p class="small"><b>${line.en}</b> <span class="th" lang="th">${line.th}</span></p><ol class="lessons">${line.stations.map(id => `<li><button class="lesson-row ${S.done[id] ? 'passed' : ''}" data-life="${id}"><span class="st">${S.done[id] ? ic('check') : ic('play')}</span><span class="grow"><b>${esc(STATIONS[id].en)}</b><br><span class="small th" lang="th">${STATIONS[id].th}</span></span></button></li>`).join('')}</ol>`).join('') : '<p class="small">Everyday conversation, chat and culture come after you can read.</p>') : `<ol class="lessons">${ph.lessons.map(lessonRow).join('')}</ol>`}
+      <ol class="lessons">${ph.lessons.map(lessonRow).join('')}</ol>
     </div>` : ''}</section>`;
 }
 function writingCard() {
@@ -361,7 +366,7 @@ function openLesson(id) {
   const l = LESSON[id];
   if (!lessonOpen(id)) return toast(lockReason(id) + '.');
   const nxt = nextAfter(id);
-  startLesson({ id, title: l.title, sub: `${l.phase === 'W' ? 'Writing track' : `Phase ${l.phase} · ${phaseOf(id).title}`}`, mode: 'lesson', steps: [...l.teach(), ...l.test()], color: colorOf(id), pass: passMark(l), nextTitle: nxt?.title }, afterLesson);
+  startLesson({ id, title: l.title, sub: `${l.phase === 'W' ? 'Writing track' : `Phase ${l.phase} · ${phaseOf(id).title}`}`, mode: 'lesson', steps: [...l.teach(), ...l.test()], color: colorOf(id), pass: passMark(l), nextTitle: nxt?.title, words: l.words }, afterLesson);
   route = 'play'; render(); window.scrollTo(0, 0);
 }
 function retest(id) {
@@ -378,6 +383,7 @@ function remedial(id) {
   route = 'play'; render(); window.scrollTo(0, 0);
 }
 function afterLesson(r) {
+  if (r.id === 'FINAL' && isPassed('FINAL') && !S.cert) { issueCert(); return go('cert'); }
   if (r.to === 'remedial' && r.id) return remedial(r.id);
   if (r.to === 'retest' && (r.id || lastRetest)) return retest(r.id || lastRetest);
   if (r.to === 'next' && r.id) { const n = nextAfter(r.id); if (n) { openPhase = LESSON[n.id].phase; return openLesson(n.id); } }
@@ -417,7 +423,8 @@ function vVowels() {
 }
 
 // Sing-along: reads every letter name in order with on-screen karaoke highlighting.
-let sing = { on: false, i: 0, rate: 0.85, timer: null };
+let sing = { on: false, i: 0, rate: 0.85, timer: null, mode: 'names' };
+const singText = x => sing.mode === 'song' ? `${x.say} ${SONG[x.c]}` : `${x.say} ${x.word}`;
 function stopSing() { sing.on = false; clearTimeout(sing.timer); try { speechSynthesis.cancel(); } catch (e) {} }
 function singStep() {
   if (!sing.on || route !== 'letters' || lettersTab !== 'sing') return stopSing();
@@ -426,7 +433,9 @@ function singStep() {
   let moved = false; const advance = () => { if (moved || !sing.on) return; moved = true; sing.i++; if (sing.i >= LETTERS.length) { sing.i = 0; sing.on = false; paintSing(); toast('ก to ฮ — done! Play again or tap any letter.'); return; } sing.timer = setTimeout(singStep, 350 / sing.rate); };
   try {
     if (!S.sound) throw 0;
-    const u = new SpeechSynthesisUtterance(`${x.say} ${x.word}`); u.lang = 'th-TH'; u.rate = sing.rate;
+    const recFile = RECORDINGS[singText(x)];
+    if (recFile) { const a = new Audio(recFile); a.onended = advance; a.play().catch(() => {}); sing.timer = setTimeout(advance, 6000); return; }
+    const u = new SpeechSynthesisUtterance(singText(x)); u.lang = 'th-TH'; u.rate = sing.rate;
     const v = speechSynthesis.getVoices().find(v => /^th/i.test(v.lang)); if (v) u.voice = v;
     u.onend = advance; speechSynthesis.cancel(); speechSynthesis.speak(u);
     sing.timer = setTimeout(advance, 2600 / sing.rate);
@@ -435,19 +444,20 @@ function singStep() {
 function paintSing() {
   const x = LETTERS[sing.i];
   const box = document.getElementById('singNow'); if (!box) return;
-  box.innerHTML = `<span class="bigchar cls-${x.cls}" lang="th">${x.c}</span><div class="stack" style="gap:2px"><p class="th lname" lang="th">${x.say} ${x.word}</p><p class="rom always">${x.rom}</p><p>${x.pic} ${x.en}</p></div>`;
+  box.innerHTML = `<span class="bigchar cls-${x.cls}" lang="th">${x.c}</span><div class="stack" style="gap:2px"><p class="th lname" lang="th">${x.say} ${x.word}</p><p class="rom always">${x.rom}</p>${sing.mode === 'song' ? `<p class="th songline" lang="th">${x.say} ${SONG[x.c]}</p>` : `<p>${x.pic} ${x.en}</p>`}</div>`;
   document.querySelectorAll('.kara').forEach((el, i) => el.classList.toggle('now', i === sing.i));
   document.querySelector('.kara.now')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const pb = document.getElementById('singPlay'); if (pb) pb.innerHTML = sing.on ? `${ic('pause')} Pause` : `${ic('play')} Play`;
 }
 function vSing() {
   return `<section class="card c-lav-l stack">
+    <div class="seg" role="group" aria-label="What to sing"><button data-smode="names" aria-pressed="${sing.mode === 'names'}">Letter names</button><button data-smode="song" aria-pressed="${sing.mode === 'song'}">KhaoJai ก–ฮ chant</button></div>
     <div id="singNow" class="singnow"></div>
     <div class="row"><button class="btn" id="singPlay">${ic('play')} Play</button><button class="btn line" id="singPrev" aria-label="Previous letter">⏮</button><button class="btn line" id="singNext" aria-label="Next letter">⏭</button>
       <label class="row small" for="singRate" style="gap:6px">Speed <select id="singRate" class="input auto"><option value="0.6">Slow</option><option value="0.85" selected>Normal</option><option value="1">Fast</option></select></label></div>
-    <div class="karaoke">${LETTERS.map((x, i) => `<button class="kara ${i === sing.i ? 'now' : ''}" data-kara="${i}"><span class="th" lang="th">${x.c}</span><span class="th small" lang="th">${x.say} ${x.word}</span><span class="rom">${x.rom}</span></button>`).join('')}</div>
+    <div class="karaoke">${LETTERS.map((x, i) => `<button class="kara ${i === sing.i ? 'now' : ''}" data-kara="${i}"><span class="th" lang="th">${x.c}</span><span class="th small" lang="th">${sing.mode === 'song' ? `${x.say} ${SONG[x.c]}` : `${x.say} ${x.word}`}</span><span class="rom">${x.rom}</span></button>`).join('')}</div>
   </section>
-  <p class="small muted">This sing-along reads each letter name aloud with your device's Thai voice and highlights it as it goes. A recorded alphabet song or video (original or properly licensed) will be added here — it is not included yet.</p>`;
+  <p class="small muted">The sing-along reads each line aloud with your device's Thai voice and highlights it as it goes. "KhaoJai ก–ฮ chant" is KhaoJai's own original text — a recorded version in a real Thai voice will replace the device voice when it is ready.</p>`;
 }
 
 // Recite & record: listen, record yourself, compare. Recordings stay in this tab only.
@@ -524,7 +534,8 @@ function vPractice() {
     <button class="card drill c-pink-l" data-review="trouble"><span class="clockface th" lang="th">${trouble.slice(0, 3).join(' ') || '—'}</span><h3>Trouble letters</h3><p class="small">${trouble.length ? 'The letters you miss most' : 'None yet — great!'}</p></button>
     <button class="card drill c-mint-l" data-drill="time"><span class="clockface">19:00</span><h3>Thai time & money</h3><p class="small">หนึ่งทุ่ม, บ่ายโมง, baht & satang</p></button>
   </div>
-  <section class="card stack"><h2>Practise one skill</h2><div class="chips">${[...PHASE1_SKILLS, 'tone', 'write'].map(k => `<button class="chip" data-skill="${k}">${SKILLS[k].short}${sk[k]?.t ? ` · ${sk[k].pct}%` : ''}</button>`).join('')}</div></section>
+  ${myWords()}
+  <section class="card stack"><h2>Practise one skill</h2><div class="chips">${Object.keys(SKILLS).filter(k => PHASE1_SKILLS.includes(k) || ['tone', 'write'].includes(k) || sk[k]?.t).map(k => `<button class="chip" data-skill="${k}">${SKILLS[k].short}${sk[k]?.t ? ` · ${sk[k].pct}%` : ''}</button>`).join('')}</div></section>
   <section class="card stack c-lav-l">
     <div class="row between"><h2>Letter flashcards</h2><span class="pill">${fc.i % fc.deck.length + 1} / ${fc.deck.length}${learnedKeys().some(isLetter) ? ' · missed letters first' : ' · starter set'}</span></div>
     <button class="flash ${fc.flip ? 'flipped' : ''}" id="flash" aria-label="Flip card"><span class="flash-in">
@@ -533,6 +544,71 @@ function vPractice() {
     <div class="row nowrap"><button class="btn line" data-say="${x.say} ${x.word}" aria-label="Listen">${ic('sound')}</button>
       <button class="btn line grow" data-rate="again">Again</button><button class="btn line grow" data-rate="good">Good</button><button class="btn grow" data-rate="easy">Easy</button></div>
   </section>`;
+}
+
+function myWords() {
+  const mine = S.words.filter(w => WORD[w]), due = dueWords().filter(w => WORD[w]), hard = troubleWords().filter(w => WORD[w]), sp = spellTrouble().filter(w => WORD[w]);
+  return `<section class="card stack c-peach-l"><div class="row between"><h2>My words</h2><span class="pill">${mine.length} word${mine.length === 1 ? '' : 's'}</span></div>
+    ${mine.length ? `<p class="small">Words from your lessons come back here until you remember them. ${due.length ? `<b>${due.length} due for review.</b>` : 'Nothing due right now.'}</p>
+      <div class="row"><button class="btn" data-words="review">Review words${due.length ? ` (${Math.min(8, due.length)})` : ''}</button><button class="btn line" data-words="spell">Spelling practice</button><button class="btn line" data-words="listen">Listening</button></div>
+      <div class="wordlist">${mine.slice(-40).reverse().map(w => `<button class="wchip ${hard.includes(w) ? 'weak' : ''}" data-say="${esc(w)}"><span class="th" lang="th">${w}</span><small>${esc(WORD[w].en)}${sp.includes(w) ? ' · ✍️' : ''}</small></button>`).join('')}</div>
+      <p class="small muted">Tap a word to hear it. Pink = words you often miss · ✍️ = spelling to practise.</p>`
+    : '<p class="small muted">Words you meet in Phase 3 and later appear here, with review and spelling practice.</p>'}</section>`;
+}
+
+/* ---------- Certificate ---------- */
+const learnerName = () => S.certName || Auth.user()?.user_metadata?.name || S.profile?.name || '';
+function issueCert() {
+  const d = new Date(), rnd = Math.random().toString(36).slice(2, 8).toUpperCase();
+  S.cert = { id: `KJ-${d.toISOString().slice(0, 10).replace(/-/g, '')}-${rnd}`, date: d.toISOString().slice(0, 10), score: S.lessons.FINAL?.testBest || 0 };
+  save();
+}
+const LEVEL_NAME = score => score >= 95 ? 'with distinction' : score >= 88 ? 'with merit' : 'completed';
+function vCert() {
+  if (!S.cert) {
+    const total = PHASES.reduce((n, p) => n + p.lessons.length, 0), done = PHASES.reduce((n, p) => n + p.lessons.filter(l => isPassed(l.id)).length, 0);
+    return `${topbar()}<div class="pagehead"><h1>Your certificate</h1></div>
+    <section class="card stack c-lemon-l center">${mascot('think', 96)}<h2>Not yet — keep going!</h2>
+      <p>Pass every lesson in Phases 1–8 and the <b>Final course assessment</b> to receive your KhaoJai course-completion certificate.</p>
+      ${bar(done / total * 100, 'thick')}<p class="small"><b>${done} of ${total}</b> lessons passed</p>
+      <button class="btn" data-go="map">Back to my lessons</button></section>`;
+  }
+  const c = S.cert, nm = learnerName();
+  const date = new Date(c.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return `${topbar()}<div class="pagehead noprint"><h1>Your certificate 🎓</h1><p class="muted">Congratulations! Type your name as you want it printed, then save or print it.</p></div>
+  <div class="row noprint"><label class="lbl" for="certName">Name on certificate</label><input id="certName" class="input" value="${esc(nm)}" maxlength="60" placeholder="Your name"></div>
+  <article class="certificate" id="certificate">
+    <div class="cert-in">
+      <div class="cert-top">${jai(70, 'cheer')}<div><p class="cert-brand">Khao<b>Jai</b> · เข้าใจ</p><p class="small">Learn Thai. Understand Thai. Live Thai.</p></div></div>
+      <p class="cert-kicker">Certificate of Course Completion</p>
+      <p class="small">This certifies that</p>
+      <h2 class="cert-name" id="certNameOut">${esc(nm || '—')}</h2>
+      <p>has completed the <b>KhaoJai Thai course, Phases 1–8</b><br>(reading, reading rules, vocabulary, grammar, listening & speaking, real-life Thai, chat Thai and practical Thai)<br>and passed the final course assessment <b>${LEVEL_NAME(c.score)}</b> (${c.score}%).</p>
+      <div class="cert-foot"><div><b>${date}</b><br><span class="small">Date</span></div><div><b>${c.id}</b><br><span class="small">Certificate ID</span></div></div>
+      <p class="cert-note">A KhaoJai course-completion certificate. It is not a government-recognised qualification and does not certify a standardised (e.g. CEFR) proficiency level.</p>
+    </div>
+  </article>
+  <div class="row noprint"><button class="btn big" id="certPrint">${ic('save')} Save as PDF / print</button><button class="btn line" data-go="map">Back to learning</button></div>
+  <p class="small muted noprint">Tip: in the print window choose "Save as PDF". An online verification page for certificate IDs is planned.</p>`;
+}
+
+/* ---------- Privacy & terms (needed for the app stores) ---------- */
+function vPrivacy() {
+  return `${topbar()}<div class="pagehead"><h1>Privacy & terms</h1><p class="muted">Early-preview version · last updated 7 November 2026</p></div>
+  <section class="card stack"><h2>What KhaoJai stores</h2><ul class="ticks">
+    <li>Your account: email address, the name you give, and (if you add it) your mobile number.</li>
+    <li>Your learning: answers to the starting questions, lesson results, word reviews and settings.</li>
+    <li>Recordings you make in "Recite & record" stay in your browser tab and are never uploaded.</li></ul>
+    <p>Data is stored with Supabase (our database provider). We do not sell your data or show third-party ads.</p></section>
+  <section class="card stack"><h2>Your choices</h2><ul class="ticks">
+    <li>You can change your answers and settings in Me at any time.</li>
+    <li>You can delete your account and all of its learning data in Me → Delete my account.</li>
+    <li>Questions: contact the KhaoJai team (contact address to be added before launch).</li></ul></section>
+  <section class="card stack"><h2>Terms of use (summary)</h2><ul class="ticks">
+    <li>KhaoJai is a learning aid. Romanization, English-letter links and the automatic checks are approximate.</li>
+    <li>The certificate shows completion of the KhaoJai course; it is not an official qualification.</li>
+    <li>Paid plans are not on sale yet; the checkout in this preview is a demo and never charges.</li></ul></section>
+  <button class="btn line" data-go="me">Back</button>`;
 }
 
 /* ---------- Decoder ---------- */
@@ -566,13 +642,16 @@ function vMe() {
     <h1>${acct ? 'My account' : 'Guest learner'}</h1>
     ${acct ? `<p class="small">Signed in as <b>${esc(Auth.user()?.email || '')}</b>. Your progress is saved to your account.</p><p class="small muted">${sync.status === 'saving' ? 'Saving…' : sync.status === 'saved' ? 'All progress saved ✓' : sync.status === 'offline' ? 'Offline — progress will be saved when you are back online.' : sync.status === 'error' ? `Couldn't save just now: ${esc(sync.error)}` : ''}</p>`
       : `<p class="small">Learning without an account. Progress is saved on this device only.</p>`}
-    <div class="row">${acct ? '<button class="btn line" id="mOut">Sign out</button>' : Auth.configured() ? '<button class="btn" id="mSignIn">Sign in or create an account</button>' : '<span class="pill">Accounts: coming soon</span>'}</div></div></section>
+    <div class="row">${acct ? `<button class="btn line" id="mOut">${tr('signOut')}</button>` : Auth.configured() ? '<button class="btn" id="mSignIn">Sign in or create an account</button>' : '<span class="pill">Accounts: coming soon</span>'}</div></div></section>
+  <section class="card stack"><h2>${tr('language')}</h2><div class="langpick inme" role="group" aria-label="${tr('language')}">${LANGS.map(([k, n]) => `<button type="button" class="lp ${lang() === k ? 'on' : ''}" data-lang="${k}">${n}</button>`).join('')}</div><p class="small muted">${tr('enNote')}</p></section>
   <section class="card stack"><h2>My learning</h2>
     ${S.profile ? `<p class="small">Goal: <b>${QS[4][2].find(o => o[0] === S.profile.reason)?.[1] || '—'}</b> · ${S.profile.minutes} min a day (${dailyGoal()} points)</p>` : ''}
     <div class="row"><button class="btn line" data-go="notice">How KhaoJai teaches</button><button class="btn line" id="mOnb">Change my answers</button>${!S.placed ? '<button class="btn line" id="mPlace">Take the placement check</button>' : ''}</div></section>
   <div class="grid g2">
     <button class="card tile c-mint-l" data-go="homework">${ic('homework')}<span><b>Homework Studio</b><br><span class="small">AI check or a real Thai reviewer</span></span>${ic('chev')}</button>
     <button class="card tile c-lemon-l" data-go="plans">${ic('star')}<span><b>KhaoJai Plus</b><br><span class="small">Plans & payment (demo)</span></span>${ic('chev')}</button>
+    <button class="card tile c-peach-l" data-go="cert">${ic('flag')}<span><b>My certificate</b><br><span class="small">${S.cert ? `Earned · ${S.cert.id}` : 'After the final assessment'}</span></span>${ic('chev')}</button>
+    <button class="card tile c-sky-l" data-go="privacy">${ic('shield')}<span><b>Privacy & terms</b><br><span class="small">What we store and why</span></span>${ic('chev')}</button>
   </div>
   <section class="card"><h2>Settings</h2>
     ${row('bulb', 'Show romanization', 'On by default for beginners. You can also hide it inside any lesson. Reading tests hide it.', tog('sRom', S.rom, 'Show romanization'))}
@@ -582,8 +661,9 @@ function vMe() {
     ${row('map', 'Unlock everything (testing)', 'For reviewing the app — normally lessons unlock in order', tog('sUnlock', S.unlockAll, 'Unlock everything'))}
     ${row('phone', 'Install on your phone or computer', 'iPhone, Android, Windows, Mac', '<button class="btn line" data-sheet="install">How</button>')}
     ${row('trash', 'Reset progress', acct ? 'Start again from the first lesson (also resets your account\'s progress)' : 'Start again from the first lesson', '<button class="btn line" id="sReset">Reset</button>')}
+    ${acct ? row('trash', 'Delete my account', 'Removes your account and all its learning data. This cannot be undone.', '<button class="btn line" id="sDelete">Delete</button>') : ''}
   </section>
-  <p class="small muted center">KhaoJai early preview · v0.6 · Reading Foundations</p>`;
+  <p class="small muted center">KhaoJai early preview · v0.7 · Phases 1–8</p>`;
 }
 
 /* ---------- Homework & Plans (unchanged features) ---------- */
@@ -660,7 +740,7 @@ function render() {
   const main = document.getElementById('main');
   if (route === 'play') { main.innerHTML = renderPlayer(); mountPlayer(render); }
   else {
-    const views = { auth: vAuth, notice: vNotice, onboard: vOnboard, map: vMap, letters: vLetters, practice: vPractice, decoder: vDecoder, me: vMe, homework: vHomework, plans: vPlans };
+    const views = { auth: vAuth, notice: vNotice, onboard: vOnboard, cert: vCert, privacy: vPrivacy, map: vMap, letters: vLetters, practice: vPractice, decoder: vDecoder, me: vMe, homework: vHomework, plans: vPlans };
     main.innerHTML = `<div class="view ${GATE.includes(route) ? 'narrow' : ''}">${views[route]()}</div>`;
     if (route === 'letters' && lettersTab === 'sing') paintSing();
     if (route === 'letters' && lettersTab === 'write') { const cv = document.getElementById('studioPad'); if (cv) mountPad(cv, { c: studio.c, guide: studio.guide, strokes: studio.strokes, reveal: studio.score !== null && !studio.guide }); }
@@ -681,6 +761,7 @@ document.addEventListener('click', e => {
   if (d.p) return playerAction(t, render);
   if (d.close !== undefined) return closeSheet();
   if (d.sheet) return openSheet(d.sheet);
+  if (d.lang) { S.lang = d.lang; save(); document.documentElement.lang = d.lang; return render(); }
   if (d.amode) return setMode(d.amode);
   if (t.id === 'aResend') return resendCode();
   if (t.id === 'aGuest') { S.entered = 'guest'; save(); return go('map'); }
@@ -689,6 +770,11 @@ document.addEventListener('click', e => {
   if (t.id === 'nStart') { S.noticeSeen = true; save(); return go('map'); }
   if (t.id === 'oPlace') { S.placed = true; save(); return startPlacement(); }
   if (t.id === 'oSkip') { onb = null; return go('map'); }
+  if (t.id === 'certPrint') { window.print(); return; }
+  if (t.id === 'sDelete') { if (!d.armed) { d.armed = '1'; t.textContent = 'Tap again to delete for good'; return; }
+    t.disabled = true; t.textContent = 'Deleting…';
+    Auth.deleteAccount().then(() => { resetAll(); auth = { mode: 'welcome', busy: false, err: '', msg: '', draft: {} }; toast('Your account and its data were deleted.'); go('auth'); })
+      .catch(e => { t.disabled = false; t.textContent = 'Delete'; delete d.armed; toast(e.message); }); return; }
   if (t.id === 'mOnb') { onb = null; S.profile = null; return go('onboard'); }
   if (t.id === 'mPlace') return startPlacement();
   if (t.id === 'mSignIn') { S.entered = ''; auth = { mode: 'signin', busy: false, err: '', msg: '', draft: {} }; return go('auth'); }
@@ -699,14 +785,16 @@ document.addEventListener('click', e => {
   if (d.retest) return retest(d.retest);
   if (d.life) return openLife(d.life);
   if (d.phase) { const v = d.phase === 'W' ? 'W' : +d.phase; openPhase = openPhase === v ? 0 : v; return render(); }
-  if (d.skill) return startPractice(`Practise: ${SKILLS[d.skill].label}`, skillDrill(d.skill, learnedKeys()));
+  if (d.skill) return startPractice(`Practise: ${SKILLS[d.skill].label}`, skillDrill(d.skill, [...learnedKeys(), ...S.words]));
   if (d.review) { const set = d.review === 'due' ? dueLetters() : troubleLetters(); return startPractice(d.review === 'due' ? 'Review' : 'Trouble letters', reviewDrill(set.length ? set : learnedKeys())); }
   if (d.drill) return startPractice('Thai time & money', TIME_DRILL.map(s => ({ ...s })), 'mint');
+  if (d.words) { const order = [...dueWords(), ...(d.words === 'spell' ? spellTrouble() : troubleWords()), ...S.words.slice().reverse()]; return startPractice(d.words === 'spell' ? 'Spelling practice' : d.words === 'listen' ? 'Listening practice' : 'Word review', wordDrill(order, d.words), 'peach'); }
   if (d.letter) { sheetLetter = d.letter; say(`${L[d.letter].say} ${L[d.letter].word}`); return openSheet('letter'); }
+  if (d.smode) { stopSing(); sing.mode = d.smode; return render(); }
   if (d.ltab) { stopSing(); lettersTab = d.ltab; return render(); }
-  if (d.kara !== undefined) { sing.i = +d.kara; const was = sing.on; stopSing(); if (was) { sing.on = true; singStep(); } else { paintSing(); const x = LETTERS[sing.i]; say(`${x.say} ${x.word}`); } return; }
+  if (d.kara !== undefined) { sing.i = +d.kara; const was = sing.on; stopSing(); if (was) { sing.on = true; singStep(); } else { paintSing(); const x = LETTERS[sing.i]; say(singText(x)); } return; }
   if (t.id === 'singPlay') { if (sing.on) { stopSing(); paintSing(); } else { sing.on = true; singStep(); } return; }
-  if (t.id === 'singPrev' || t.id === 'singNext') { sing.i = (sing.i + (t.id === 'singNext' ? 1 : -1) + LETTERS.length) % LETTERS.length; const was = sing.on; stopSing(); if (was) { sing.on = true; singStep(); } else { paintSing(); say(`${LETTERS[sing.i].say} ${LETTERS[sing.i].word}`); } return; }
+  if (t.id === 'singPrev' || t.id === 'singNext') { sing.i = (sing.i + (t.id === 'singNext' ? 1 : -1) + LETTERS.length) % LETTERS.length; const was = sing.on; stopSing(); if (was) { sing.on = true; singStep(); } else { paintSing(); say(singText(LETTERS[sing.i])); } return; }
   if (d.rgroup !== undefined) { rec.g = +d.rgroup; if (rec.url) { URL.revokeObjectURL(rec.url); rec.url = null; } return render(); }
   if (d.weak) { const w = S.recite.weak; const i = w.indexOf(d.weak); if (i < 0) w.push(d.weak); else w.splice(i, 1); save(); t.classList.toggle('weak'); say(`${L[d.weak].say} ${L[d.weak].word}`); return; }
   if (t.id === 'recRef') return playSeq(GROUPS4[rec.g]);
@@ -753,6 +841,7 @@ document.addEventListener('submit', e => {
 });
 document.addEventListener('input', e => {
   const t = e.target;
+  if (t.id === 'certName') { S.certName = t.value.trim(); save(); const o = document.getElementById('certNameOut'); if (o) o.textContent = S.certName || '—'; }
   if (t.dataset.otp !== undefined) {
     const digits = t.value.replace(/\D/g, ''); const boxes = [...document.querySelectorAll('.otpbox')]; let i = +t.dataset.otp;
     if (digits.length > 1) { digits.split('').slice(0, 6 - i).forEach((d, k) => { boxes[i + k].value = d; }); i = Math.min(5, i + digits.length - 1); } else t.value = digits;

@@ -1,0 +1,8 @@
+{
+  "appId": "app.khaojai.learn",
+  "appName": "KhaoJai",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "android": { "backgroundColor": "#F6F1FF" },
+  "ios": { "backgroundColor": "#F6F1FF", "contentInset": "always" }
+}

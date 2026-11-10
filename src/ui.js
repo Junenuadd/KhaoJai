@@ -45,12 +45,29 @@ const FACES = {
   think: `<ellipse cx="40" cy="45" rx="5" ry="7" fill="${K}"/><ellipse cx="64" cy="45" rx="5" ry="7" fill="${K}"/><path d="M45 60h10" stroke="${K}" stroke-width="4" stroke-linecap="round"/>`,
   sleep: `<path d="M32 48q6 5 12 0M56 48q6 5 12 0" fill="none" stroke="${K}" stroke-width="4" stroke-linecap="round"/><ellipse cx="50" cy="60" rx="3.5" ry="3" fill="${K}"/>`
 };
+// Arms for each pose (placeholder until จูน's real mascot exists). Same original bubble character as before.
+const ARMS = {
+  happy: '<path class="arm wave" d="M86 52q12-6 10-20" />',
+  cheer: '<path class="arm up-l" d="M14 52q-12-10-8-26" /><path class="arm up-r" d="M86 52q12-10 8-26" />',
+  oops: '<path d="M14 58q-8 6-6 14" /><path d="M86 58q8 6 6 14" />',
+  think: '<path d="M72 74q10 2 8-10" />',
+  sleep: ''
+};
 export function jai(size = 64, face = 'happy', fill = '#C9B6FF', cls = '') {
-  return `<svg class="jai ${cls}" width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="Jai">
+  return `<svg class="jai ${cls}" width="${size}" height="${size}" viewBox="-6 -2 112 104" role="img" aria-label="Jai">
+    <g class="arms" fill="none" stroke="${K}" stroke-width="5" stroke-linecap="round" opacity=".85">${ARMS[face] || ''}</g>
     <path d="M50 10c24 0 41 15 41 37 0 23-17 37-41 37-5 0-10-.6-14-2l-17 9 4-15C14 69 9 59 9 47 9 25 26 10 50 10z" fill="${fill}"/>
     <ellipse cx="28" cy="58" rx="6" ry="3.5" fill="#FF8FB8" opacity=".55"/><ellipse cx="72" cy="58" rx="6" ry="3.5" fill="#FF8FB8" opacity=".55"/>
     ${FACES[face] || FACES.happy}
+    ${['happy', 'oops', 'think'].includes(face) ? `<g class="lids" fill="${fill}"><ellipse cx="${face === 'think' ? 40 : 38}" cy="47" rx="7" ry="9"/><ellipse cx="${face === 'think' ? 64 : 62}" cy="47" rx="7" ry="9"/></g>` : ''}
   </svg>`;
+}
+// Mascot with a reaction animation: 'pop' (correct), 'shake' (wrong), 'bob' (idle), 'dance' (finished).
+export const mascot = (face = 'happy', size = 80, anim = 'bob', fill = '#C9B6FF') => jai(size, face, fill, `m-${anim}`);
+// Confetti burst for a passed test (pure CSS, original).
+export function confetti(n = 28) {
+  const cols = ['#C9B6FF', '#FFD86B', '#FF8FB8', '#7FD8BE', '#8EC5FF', '#FFB38A'];
+  return `<div class="confetti" aria-hidden="true">${Array.from({ length: n }, (_, i) => `<i style="left:${(i * 37) % 100}%;background:${cols[i % cols.length]};animation-delay:${(i % 7) * 0.12}s;animation-duration:${1.6 + (i % 5) * 0.25}s;transform:rotate(${i * 29}deg)"></i>`).join('')}</div>`;
 }
 
 // Tone contour icons (pitch shape) — a small detail for learners.

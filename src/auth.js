@@ -6,7 +6,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { S, snapshot, replaceAll, onSave } from './store.js';
 
 const SKEY = 'khaojai.session';
-export const configured = () => !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+export const configured = () => !globalThis.KJ_PREVIEW && !!(SUPABASE_URL && SUPABASE_ANON_KEY); // KJ_PREVIEW: claude.ai phone preview runs in guest mode
 let session = null;
 try { session = JSON.parse(localStorage.getItem(SKEY) || 'null'); } catch (e) {}
 const keep = s => { session = s; try { s ? localStorage.setItem(SKEY, JSON.stringify(s)) : localStorage.removeItem(SKEY); } catch (e) {} };
@@ -72,6 +72,13 @@ export async function verifyCode(email, token, kind = 'email') {
   const d = await api('/auth/v1/verify', { method: 'POST', body: { type: kind === 'signup' ? 'signup' : 'email', email, token } });
   if (!d?.access_token) throw new Error('That code didn\'t work. Please try again.');
   keep(withExpiry(d)); await afterSignIn(); return true;
+}
+// Deletes the signed-in account and its progress. Needs the SQL function in docs/sql/delete_account.sql.
+export async function deleteAccount() {
+  if (!signedIn()) throw new Error('Please sign in first.');
+  try { await api('/rest/v1/rpc/delete_my_account', { method: 'POST', token: await token(), body: {} }); }
+  catch (e) { throw new Error(/function|not find|404|PGRST202/i.test(e.message) ? 'Account deletion is not switched on yet. Please contact the KhaoJai team.' : e.message); }
+  session = null; try { localStorage.removeItem(SKEY); } catch (e) {}
 }
 export function signInOAuth(provider) {
   location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=${encodeURIComponent(provider)}&redirect_to=${encodeURIComponent(here())}`;

@@ -2,11 +2,12 @@
 // Practice mistakes come back at the end of the practice part (up to twice).
 // Only FIRST-TRY answers in the TEST part decide the score; practice never decides a pass.
 // After a failed test the learner can practise only what they missed, then retake a new test.
-import { S, save, addPoints, seeLetter, markViewed, markPracticed, recordTest, judge } from './store.js';
+import { S, save, addPoints, seeLetter, seeWord, markViewed, markPracticed, recordTest, judge } from './store.js';
+import { t as tr } from './i18n.js';
 import { L, SOUNDS, FINALS, CLASS_INFO, TONES } from './data/letters.js';
-import { SKILLS } from './data/curriculum.js';
+import { SKILLS, partsOf } from './data/curriculum.js';
 import { PASS } from './config.js';
-import { ic, jai, toneIcon, esc, say } from './ui.js';
+import { ic, jai, mascot, confetti, toneIcon, esc, say } from './ui.js';
 import { mountPad, shapeScore, recognize } from './draw.js';
 import { LETTERS } from './data/letters.js';
 const MODERN = LETTERS.filter(x => !x.old).map(x => x.c);
@@ -52,10 +53,10 @@ export function renderPlayer() {
   const ex = cur();
   const pct = Math.round(P.done / Math.max(1, P.scored) * 100);
   const teaching = !scoredStep(ex);
-  const canCheck = (['choose', 'listen', 'tone'].includes(ex.t) && P.sel !== null) || (ex.t === 'build' && P.built.length > 0) || (['trace', 'write'].includes(ex.t) && P.strokes.length > 0 && !P.checking);
-  const romBtn = ['choose', 'listen', 'build', 'card', 'vcard', 'info', 'write', 'recall'].includes(ex.t) && (ex.t !== 'choose' || ex.thai || ex.prompt || ex.show);
+  const canCheck = (['choose', 'listen', 'tone', 'chat'].includes(ex.t) && P.sel !== null) || (ex.t === 'build' && P.built.length > 0) || (['trace', 'write'].includes(ex.t) && P.strokes.length > 0 && !P.checking);
+  const romBtn = ['choose', 'listen', 'build', 'card', 'vcard', 'wcard', 'info', 'write', 'recall'].includes(ex.t) && (ex.t !== 'choose' || ex.thai || ex.prompt || ex.show);
   const firstTest = P.mode === 'lesson' && P.isTest(ex) && P.i > 0 && !P.isTest(P.list[P.i - 1]) && P.phase === 'answer';
-  const tag = ex.phase || ({ intro: P.mode === 'placement' ? 'Placement' : 'Lesson', card: 'Learn', vcard: 'Learn', info: 'Understand', recall: 'Recall' }[ex.t] || '');
+  const tag = ex.phase || ({ intro: P.mode === 'placement' ? 'Placement' : 'Lesson', card: 'Learn', vcard: 'Learn', wcard: 'Learn', info: 'Understand', recall: 'Recall' }[ex.t] || '');
   return `<div class="play c-${P.color}">
     <header class="play-top">
       <button class="iconbtn ghost" data-p="quit" aria-label="Leave">${ic('close')}</button>
@@ -71,9 +72,9 @@ export function renderPlayer() {
     ${P.phase === 'feedback' ? feedback(ex) : `<footer class="play-foot"><div class="play-foot-in">
       ${romBtn ? `<button class="btn line" data-p="rom" aria-pressed="${P.showRom}">${ic('bulb')} ${P.showRom ? 'Hide' : 'Show'} romanization</button>` : '<span></span>'}
       ${ex.t === 'recall' ? (P.revealed ? `<div class="row nowrap"><button class="btn line" data-p="recall" data-ok="0">Not yet</button><button class="btn go" data-p="recall" data-ok="1">I knew it</button></div>` : `<button class="btn big" data-p="reveal">Show answer</button>`)
-        : teaching ? `<button class="btn big" data-p="next">${ex.t === 'intro' ? 'Start' : 'Got it'} ${ic('arrow')}</button>`
+        : teaching ? `<button class="btn big" data-p="next">${tr(ex.t === 'intro' ? 'start' : 'gotIt')} ${ic('arrow')}</button>`
         : ex.t === 'match' ? '<span class="muted small">Tap a Thai letter, then its meaning</span>'
-        : `<button class="btn big" data-p="check" ${canCheck ? '' : 'disabled'}>${P.checking ? 'Checking…' : 'Check'}</button>`}
+        : `<button class="btn big" data-p="check" ${canCheck ? '' : 'disabled'}>${P.checking ? '…' : tr('check')}</button>`}
     </div></footer>`}
   </div>`;
 }
@@ -114,6 +115,13 @@ function body(ex) {
       ${ex.compare ? `<div class="compare">${ex.compare.map(c => L[c] ? `<button class="cmp" data-say="${L[c].say} ${L[c].word}"><span class="th" lang="th">${c}</span><small lang="th">${L[c].say} ${L[c].word}</small>${P.showRom ? `<small class="rom">${L[c].rom}</small>` : ''}</button>` : `<span class="cmp"><span class="th">${c}</span></span>`).join('')}</div>` : ''}
       ${ex.rows ? `<div class="tablewrap"><table class="rules">${ex.rows.map(r => `<tr>${r.map((x, i) => `<td${i === 0 ? ' class="th"' : ''}>${x}</td>`).join('')}</tr>`).join('')}</table></div>` : ''}
       ${ex.examples ? `<div class="egs">${ex.examples.map(([th, r, en]) => `<div class="eg"><span class="th" lang="th">${th}</span>${rom(r)}<span class="small">${en}</span>${speak(th)}</div>`).join('')}</div>` : ''}`;
+    case 'wcard': { const w = ex.w; return `<h2 class="q">New word</h2>
+      <div class="lcard wcard"><div class="lcard-top"><span class="bigword" lang="th">${w.th}</span>
+        <div class="stack" style="gap:4px;min-width:0">${rom(w.rom) || (P.showRom ? '' : '<span class="small muted">romanization hidden</span>')}<p class="wmean">${esc(w.en)}</p>
+        <div class="row" style="gap:8px">${speak(w.th)}<button class="btn line small-btn" data-say-slow="${esc(w.th)}">${ic('slow')} Slowly</button></div></div></div>
+        <p class="small muted" style="margin:0">How it is written, piece by piece:</p>
+        <div class="parts">${partsOf(w.th).map(p => `<span class="part ${p.kind}"><b lang="th">${p.kind === 'consonant' ? p.ch : '◌' + p.ch}</b><small>${p.label}</small></span>`).join('')}</div>
+      </div>`; }
     case 'recall': { const x = L[ex.c || ex.key]; return `<h2 class="q">Can you remember its name?</h2>
       <div class="show"><span class="th huge" lang="th">${ex.key}</span></div>
       ${P.revealed ? `<div class="stack center"><p class="th lname" lang="th">${x.say} ${x.word}</p><p class="rom always">${x.rom}</p><p>${x.pic} ${x.en}</p>${speak(`${x.say} ${x.word}`)}</div>` : '<p class="center muted">Say it in your head (or out loud), then tap Show answer.</p>'}`; }
@@ -138,7 +146,7 @@ function body(ex) {
         <div class="col">${P.lorder.map(i => { const m = P.matched.includes(i); return `<button class="mt th big ${m ? 'gone' : ''} ${P.left === i ? 'picked' : ''} ${P.miss && P.miss[0] === i ? 'shake' : ''}" lang="th" data-p="ml" data-i="${i}" ${m || lock ? 'disabled' : ''}>${ex.pairs[i][0]}</button>`; }).join('')}</div>
         <div class="col">${P.rorder.map(i => { const m = P.matched.includes(i); return `<button class="mt ${m ? 'gone' : ''} ${P.miss && P.miss[1] === i ? 'shake' : ''}" data-p="mr" data-i="${i}" ${m || lock ? 'disabled' : ''}>${ex.pairs[i][1]}</button>`; }).join('')}</div>
       </div>`;
-    case 'build': return `<h2 class="q">${ex.q}</h2>
+    case 'build': return `<h2 class="q">${ex.q}</h2>${ex.dictation && P.phase !== 'feedback' ? '' : ''}
       <div class="listen">${ex.sayWord ? `<button class="speaker small" data-say="${esc(ex.sayWord)}" aria-label="Listen">${ic('sound')}</button>` : ''}</div>
       <div class="ansline" aria-label="Your answer">${P.built.length ? `<span class="th spelled" lang="th">${P.built.map(k => tileOf(ex, k)[0]).join('')}</span>` + P.built.map((k, j) => `<button class="wtile th small" lang="th" data-p="unbuild" data-j="${j}" ${lock} aria-label="Remove">${tileShow(tileOf(ex, k))}</button>`).join('') : '<span class="muted small">Tap the pieces below in writing order</span>'}</div>
       <div class="bank">${P.torder.map(k => { const t = tileOf(ex, k), used = P.built.includes(k); return `<button class="wtile th ${used ? 'used' : ''}" lang="th" data-p="build" data-k="${k}" ${used || lock ? 'disabled' : ''}>${tileShow(t)}</button>`; }).join('')}</div>`;
@@ -168,7 +176,7 @@ function correctText(ex) {
 
 function feedback(ex) {
   const good = P.ok;
-  let title = good ? ['Nice!', 'Correct!', 'You got it!', 'เก่งมาก! (geng maak — great job)'][P.done % 4] : 'Not quite';
+  let title = good ? ['Nice!', 'Correct!', 'You got it!', 'เก่งมาก! (geng maak — great job)'][P.done % 4] : tr('notQuite');
   if (ex.t === 'match') title = P.matchMiss ? 'All matched — a few slips' : 'Perfect match!';
   let detail = '';
   if (ex.t === 'trace' || ex.t === 'write') {
@@ -180,12 +188,12 @@ function feedback(ex) {
   const why = ex.why || (ex.c ? `${ex.c} = ${L[ex.c].say} ${L[ex.c].word} (${L[ex.c].rom}).` : '');
   const test = P.isTest(ex);
   return `<footer class="fb ${good ? 'good' : 'bad'}" role="status"><div class="fb-in">
-    <div class="row" style="flex-wrap:nowrap;align-items:flex-start">${jai(52, good ? 'cheer' : 'oops', good ? '#A8EBC4' : '#FFC1B5')}
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-start">${mascot(good ? 'cheer' : 'oops', 56, good ? 'pop' : 'shake', good ? '#A8EBC4' : '#FFC1B5')}
       <div class="stack" style="gap:4px;min-width:0"><h3>${title}</h3>${detail}
         ${!good && ans ? `<p>Answer: <b ${ex.t === 'tone' || ex.skill === 'combo' || ex.skill === 'read' || ex.skill === 'final' || ex.skill === 'vowel' ? '' : 'class="th" lang="th"'}>${ans}</b></p>` : ''}
         ${why ? `<p class="small">${why}</p>` : ''}${ex.sayAfter ? `<div>${speak(ex.sayAfter, 'Hear it')}</div>` : ''}
         ${!good && ex.t !== 'match' ? `<p class="small"><b>${test ? 'Noted — you\'ll get targeted practice for this after the test.' : 'This one will come back later in the lesson.'}</b></p>` : ''}</div></div>
-    <button class="btn big ${good ? 'go' : 'warm'}" data-p="next" autofocus>Continue</button>
+    <button class="btn big ${good ? 'go' : 'warm'}" data-p="next" autofocus>${tr('next')}</button>
   </div></footer>`;
 }
 
@@ -206,8 +214,8 @@ function renderResult() {
       <div class="stack" style="width:100%;max-width:380px">${P.retestId ? `<button class="btn big block" data-p="finish" data-to="retest">Retake the test ${ic('arrow')}</button>` : ''}<button class="btn line block" data-p="finish" data-to="map">Back to my dashboard</button></div></main></div>`;
   }
   const ok = R.passed;
-  return `<div class="play result c-${P.color}"><main class="play-body center">
-    ${jai(120, ok ? 'cheer' : 'think', ok ? '#C9B6FF' : '#FFD0B3', 'bob')}
+  return `<div class="play result c-${P.color}">${ok ? confetti() : ''}<main class="play-body center">
+    ${mascot(ok ? 'cheer' : 'think', 120, ok ? 'dance' : 'bob', ok ? '#C9B6FF' : '#FFD0B3')}
     <p class="eyebrow">Test result</p>
     <h1>${esc(P.title)}</h1>
     <div class="scorebig ${ok ? 'pass' : 'fail'}"><b>${R.score}%</b><span>right on the first try · pass mark ${P.pass}%</span></div>
@@ -266,7 +274,8 @@ export function playerAction(btn, rerender) {
 function finishItem(ex) {
   P.phase = 'feedback';
   const first = !ex._retry, test = P.isTest(ex);
-  if (ex.key && ex.t !== 'match') { seeLetter(ex.key, P.ok); save(); }
+  if (ex.word) { seeWord(ex.word, P.ok, ex.skill); save(); }
+  else if (ex.key && ex.t !== 'match' && (L[ex.key] || ex.key.length <= 4)) { seeLetter(ex.key, P.ok); save(); }
   if (ex.t === 'match') (ex.keys || []).forEach(c => seeLetter(c, !P.missed.has(c)));
   if (first && test && ex.skill) { const s = P.skills[ex.skill] || (P.skills[ex.skill] = [0, 0]); s[1]++; if (P.ok) s[0]++; }
   if (first && P.mode === 'placement' && ex.place) { const pr = P.placeRes[ex.place] || (P.placeRes[ex.place] = [0, 0]); pr[1]++; if (P.ok) pr[0]++; }
@@ -327,12 +336,12 @@ export function mountPlayer() {
 export function playerKey(e, rerender) {
   if (!P || P.phase === 'result') return;
   const ex = cur();
-  if (/^[1-5]$/.test(e.key) && P.phase === 'answer' && ['choose', 'listen', 'tone'].includes(ex.t)) {
+  if (/^[1-5]$/.test(e.key) && P.phase === 'answer' && ['choose', 'listen', 'tone', 'chat'].includes(ex.t)) {
     const n = +e.key - 1, max = ex.t === 'tone' ? 5 : ex.o.length; if (n < max) { P.sel = n; rerender(); }
   }
   if (e.key === 'Enter' && !e.target.matches('input,textarea,button')) {
     e.preventDefault();
     if (P.phase === 'feedback' || (!scoredStep(ex) && ex.t !== 'recall')) { next(); rerender(); }
-    else if ((P.sel !== null && ['choose', 'listen', 'tone'].includes(ex.t)) || (ex.t === 'build' && P.built.length)) check(rerender);
+    else if ((P.sel !== null && ['choose', 'listen', 'tone', 'chat'].includes(ex.t)) || (ex.t === 'build' && P.built.length)) check(rerender);
   }
 }

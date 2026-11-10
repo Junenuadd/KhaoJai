@@ -571,3 +571,48 @@ body.gate{background:#F4EFFF} body.gate::before{background:#F4EFFF}
 .asheet button[type=submit]:disabled{background:#B9A6F5}
 .btn.big.line{box-shadow:0 0 0 3px var(--ink) inset,0 5px 0 var(--ink)}
 @media (min-width:900px){ .authbg{border-radius:34px;box-shadow:0 8px 0 var(--ink)} .asheet{box-shadow:none} }
+
+/* ---------- v0.7: mascot motion, word cards, certificate ---------- */
+.jai .lids ellipse{transform-box:fill-box;transform-origin:center;transform:scaleY(0);animation:kjBlink 4.2s infinite}
+@keyframes kjBlink{0%,92%,100%{transform:scaleY(0)}95%{transform:scaleY(1)}}
+.jai .arm{transform-box:fill-box}
+.jai .wave{transform-origin:0% 100%;animation:kjWave 1.6s ease-in-out infinite}
+@keyframes kjWave{0%,100%{transform:rotate(0)}50%{transform:rotate(-18deg)}}
+.jai .up-l,.jai .up-r{animation:kjArms .5s ease-in-out infinite alternate}
+.jai .up-r{animation-delay:.25s}
+@keyframes kjArms{from{transform:translateY(0)}to{transform:translateY(-3px)}}
+.m-pop{animation:kjPop .55s cubic-bezier(.3,1.6,.5,1) both}
+@keyframes kjPop{0%{transform:scale(.6) rotate(-8deg)}60%{transform:scale(1.12) rotate(4deg)}100%{transform:scale(1) rotate(0)}}
+.m-shake{animation:kjShake .5s ease both}
+@keyframes kjShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px) rotate(-4deg)}40%{transform:translateX(5px) rotate(3deg)}60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}
+.m-bob{animation:kjBob 2.4s ease-in-out infinite}
+@keyframes kjBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.m-dance{animation:kjDance 1s ease-in-out infinite}
+@keyframes kjDance{0%,100%{transform:translateY(0) rotate(-6deg)}25%{transform:translateY(-12px) rotate(0)}50%{transform:translateY(0) rotate(6deg)}75%{transform:translateY(-12px) rotate(0)}}
+@media (prefers-reduced-motion:reduce){.jai *, .m-pop,.m-shake,.m-bob,.m-dance,.confetti i{animation:none!important}}
+.confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:5}
+.confetti i{position:absolute;top:-14px;width:10px;height:16px;border-radius:3px;animation:kjFall 2s ease-in forwards}
+@keyframes kjFall{to{top:105%;opacity:.2;transform:translateX(30px) rotate(540deg)}}
+.wcard .bigword{font-family:var(--font-thai);font-size:54px;font-weight:600;line-height:1.2;padding:4px 14px;border-radius:18px;background:#fff;border:2px solid var(--hair)}
+.wmean{font-size:20px;font-weight:800;margin:0}
+.parts{display:flex;flex-wrap:wrap;gap:8px}
+.part{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 10px;border-radius:12px;background:#fff;border:2px solid var(--hair);min-width:58px}
+.part b{font-family:var(--font-thai);font-size:26px;font-weight:600;line-height:1.2}
+.part small{font-size:11px;color:var(--ink2);text-align:center;max-width:120px}
+.part.vowel{border-color:#FFD0B3}.part.mark{border-color:#C9B6FF}
+.wchip.weak{background:var(--pink-l,#FFE3EE)}
+.certificate{background:#fff;border-radius:18px;padding:14px;box-shadow:0 6px 0 var(--ink);border:3px solid var(--ink);max-width:820px;margin:0 auto;width:100%}
+.cert-in{border:3px double #B79CFF;border-radius:12px;padding:28px 22px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center}
+.cert-top{display:flex;align-items:center;gap:12px;text-align:left}
+.cert-brand{font-family:var(--font-display);font-size:28px;font-weight:700;margin:0}.cert-brand b{color:#6D45E6}
+.cert-kicker{font-family:var(--font-display);font-size:22px;letter-spacing:.06em;text-transform:uppercase;color:#6D45E6;margin:8px 0 0}
+.cert-name{font-family:var(--font-display);font-size:40px;margin:0;border-bottom:2px solid var(--hair);padding:0 24px 4px;min-width:60%}
+.cert-foot{display:flex;gap:40px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.cert-note{font-size:11px;color:var(--ink2);max-width:520px}
+@media print{body *{visibility:hidden}.certificate,.certificate *{visibility:visible}.certificate{position:absolute;left:0;top:0;box-shadow:none;border:0;max-width:none}.noprint{display:none!important}}
+
+/* v0.7 language picker */
+.langpick{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:8px}
+.langpick.inme{justify-content:flex-start}
+.langpick .lp{border:1.5px solid var(--line,#e3dcf5);background:#fff;border-radius:999px;padding:6px 12px;font:inherit;font-size:.85rem;cursor:pointer;color:inherit}
+.langpick .lp.on{background:var(--lav,#C9B6FF);border-color:transparent;font-weight:700}

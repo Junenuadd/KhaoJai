@@ -24,7 +24,8 @@ export const PASS = {
   reading: 80,
   rules: 80,
   trace: 60,
-  write: 80
+  write: 80,
+  final: 80      // final course assessment (Phases 1–8 mixed); passing it earns the KhaoJai certificate
 };
 
 // Skill levels on the dashboard (percent right in the most recent tests of that skill).
